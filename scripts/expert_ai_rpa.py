@@ -300,9 +300,13 @@ def calibrate_auto() -> None:
     exe = process_name(hwnd)
     if exe not in ("msedge.exe", "chatgpt.exe"):
         raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/ChatGPT")
-    if "ChatGPT" not in title and "Óliver's Dev Loop" not in title:
-        raise RuntimeError("Open the Óliver's Dev Loop chat before calibrating")
+    if not title.strip():
+        raise RuntimeError("The selected ChatGPT window must have a title")
+    # Identify the live ChatGPT composer by its accessible name instead of
+    # assuming every project conversation has the same browser window title.
     bounds = composer_bounds(hwnd)
+    if bounds.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
+        raise RuntimeError("Expected the accessible ChatGPT message composer")
     rect = window_rect(hwnd)
     width, height = rect.right - rect.left, rect.bottom - rect.top
     rx = (bounds["x"] + bounds["width"]/2 - rect.left) / width
@@ -325,8 +329,13 @@ def calibrate() -> None:
     hwnd = U.GetForegroundWindow()
     title = win_title(hwnd)
     exe = process_name(hwnd)
-    if "chatgpt" not in title.casefold():
-        raise RuntimeError(f"Window title must contain ChatGPT. Found: {title!r}")
+    if exe not in ("msedge.exe", "chatgpt.exe"):
+        raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/ChatGPT")
+    if not title.strip():
+        raise RuntimeError("The selected window has no title")
+    view = composer_bounds(hwnd)
+    if view.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
+        raise RuntimeError("Expected the accessible ChatGPT message composer")
     rect = window_rect(hwnd)
     point = POINT()
     U.GetCursorPos(ctypes.byref(point))

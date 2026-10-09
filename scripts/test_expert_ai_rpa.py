@@ -106,6 +106,41 @@ class ProtocolTests(unittest.TestCase):
             "calibration required"
         )
 
+    def test_auto_calibration_accepts_a_different_project_chat_title(self):
+        from types import SimpleNamespace
+
+        bounds = {
+            "x": 720, "y": 880, "width": 470, "height": 90,
+            "name": "Pergunte ao ChatGPT",
+        }
+        rect = SimpleNamespace(left=0, top=0, right=1920, bottom=1080)
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=100), \
+             patch.object(rpa, "win_title", return_value="Projeto CRM - Personal - Microsoft Edge"), \
+             patch.object(rpa, "process_name", return_value="msedge.exe"), \
+             patch.object(rpa, "composer_bounds", return_value=bounds), \
+             patch.object(rpa, "window_rect", return_value=rect), \
+             patch.object(rpa, "read_json", return_value={}), \
+             patch.object(rpa, "write_json") as save:
+            rpa.calibrate_auto()
+
+        saved = save.call_args.args[1]
+        self.assertTrue(saved["calibrated"])
+        self.assertEqual(saved["window_title"], "Projeto CRM - Personal - Microsoft Edge")
+        self.assertEqual(saved["process_name"], "msedge.exe")
+
+    def test_auto_calibration_rejects_an_unrecognized_composer(self):
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=100), \
+             patch.object(rpa, "win_title", return_value="Some other app - Edge"), \
+             patch.object(rpa, "process_name", return_value="msedge.exe"), \
+             patch.object(rpa, "composer_bounds", return_value={
+                 "x": 720, "y": 880, "width": 470, "height": 90,
+                 "name": "Some other website input",
+             }), \
+             patch.object(rpa, "write_json") as save:
+            with self.assertRaisesRegex(RuntimeError, "ChatGPT message composer"):
+                rpa.calibrate_auto()
+            save.assert_not_called()
+
     def test_random_periodic_check_stays_between_ten_and_twenty_minutes(self):
         config = {**self.config, "min_periodic_minutes": 10, "max_periodic_minutes": 20}
         samples = [10.0, 15.0, 18.25, 20.0]

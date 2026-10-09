@@ -4,6 +4,17 @@ Ferramenta local de **supervisão de desenvolvimento por etapas com ChatGPT**, P
 
 **Status:** protótipo funcional, testado no Windows. Repositório privado por padrão. Não é uma integração oficial da OpenAI e **não tem recursos de ocultação ou contorno de limites**.
 
+## Começar outro projeto (leia primeiro)
+
+**[Abrir o tutorial “Do zero à primeira execução”](docs/COMECE_AQUI.md)**. Ele explica tudo, incluindo como conectar plugins, conferir skills, planejar com prompts prontos, instalar, calibrar e iniciar o supervisor.
+
+1. **[Plugins e skills](docs/PLUGINS_E_SKILLS.md):** o que conectar e como verificar acesso real.
+2. **[Prompts prontos](docs/PROMPTS_PRONTOS.md):** copie o **Prompt A** para planejar e o **Prompt B** para revisar antes de iniciar o loop.
+3. **[Prompt mestre detalhado](docs/PROMPT_PLANEJAMENTO.md):** alternativa mais extensa para projetos complexos.
+4. **[Manual completo](docs/GUIA_COMPLETO.md):** operação, HUD, limites, recuperação e restrições.
+
+O projeto Óliver's Burger foi apenas o piloto. O script pode ser instalado em qualquer pasta de projeto **sem copiar seu checkpoint ou seus dados**.
+
 ## Visão geral
 - Controla o checkpoint em `.dev-loop/chat-state.json`: `ready → pending_send → requested → running → ready`.
 - Evita novos envios enquanto o GPT gera uma resposta e evita duplicar um request_id.
@@ -14,28 +25,37 @@ Ferramenta local de **supervisão de desenvolvimento por etapas com ChatGPT**, P
 - **HUD Tkinter** leve, sem servidor web: estados e progresso em linguagem clara, contador visual de inatividade até 90 segundos (reinicia com mouse/teclado), pausas, tarefas, commit e testes. As checagens técnicas de 10 segundos ficam ocultas no painel.
 - Reutilizável em qualquer projeto que tenha um diretório de trabalho e uma conversa própria.
 
-## Início rápido (Windows)
-Pré-requisitos: Python 3.11+, Windows, Edge e acesso autorizado ao Remote Desktop Commander no ChatGPT.
+## Instalação rápida (Windows)
+
+Pré-requisitos: Python 3.11+, Windows, Edge, Git e Remote Desktop Commander conectado ao ChatGPT. Para usar outro projeto, primeiro **pare o supervisor do projeto anterior**. Se preferir não digitar comandos para instalar, dê dois cliques em **`Instalar em outro projeto.cmd`** nesta pasta e informe caminho, nome e prefixo.
 
 ```powershell
-# No diretório do Expert AI Manager
+New-Item -ItemType Directory -Force -Path "C:\Projetos\MeuProjeto" | Out-Null
+cd "$env:USERPROFILE\Desktop\Expert AI Manager"
 py -3 -B install.py --project "C:\Projetos\MeuProjeto" --name "Meu Projeto" --prefix APP
+```
 
-# Depois de planejar e revisar AGENTS/TASKS/STATE, no projeto instalado
+Agora **abra no projeto** `docs/expert-ai-manager/COMECE_AQUI.md` e copie o **Prompt A** de `docs/expert-ai-manager/PROMPTS_PRONTOS.md` para uma conversa nova. Após o planejamento e a revisão, abra essa conversa no Edge em primeiro plano:
+
+```powershell
 cd "C:\Projetos\MeuProjeto"
+py -3 -B -m unittest discover -s scripts -p "test_expert_ai*.py" -q
 py -3 -B scripts\expert_ai_rpa.py calibrate-auto
 py -3 -B scripts\expert_ai_rpa.py status
-py -3 -B -m unittest discover -s scripts -p "test_expert_ai*.py" -q
 pyw -3 -B scripts\expert_ai_hud.py
+# Somente após conferir a conversa, o plano e os limites:
 py -3 -B -u scripts\expert_ai_rpa.py run
 ```
 
-**Não inicie o supervisor antes de revisar a janela calibrada e o planejamento.** O HUD é independente e pode ser fechado sem encerrar o supervisor.
+**Calibrar não envia mensagem.** O HUD é independente e pode ser fechado sem encerrar o supervisor. O supervisor precisa permanecer rodando em um terminal dedicado. Não inicie duas instâncias para a mesma conversa.
 
 ## Documentos
-- [Guia completo](docs/GUIA_COMPLETO.md): instalação, configuração, limites, HUD, recuperação, recursos e privacidade.
-- [Prompt mestre](docs/PROMPT_PLANEJAMENTO.md): criação de roadmap, arquitetura, backlog, plano de testes e regras do agente.
-- [Templates](templates): arquivos iniciais AGENTS, TASKS, STATE e ARCHITECTURE para novos projetos.
+- [Comece aqui](docs/COMECE_AQUI.md): caminho exato para ativar em um projeto diferente.
+- [Plugins e skills](docs/PLUGINS_E_SKILLS.md): conexão, verificação e uso por fase.
+- [Prompts prontos](docs/PROMPTS_PRONTOS.md): mensagens A (planejar), B (revisar), C (diagnosticar), D (status), E (ferramentas).
+- [Prompt mestre](docs/PROMPT_PLANEJAMENTO.md): planejamento aprofundado.
+- [Guia completo](docs/GUIA_COMPLETO.md): configurações e solução de problemas.
+- [Templates](templates): AGENTS, TASKS, STATE e ARCHITECTURE para novos projetos.
 
 ## Controles
 ```powershell

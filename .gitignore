@@ -20,3 +20,5 @@ node_modules/
 dist/
 build/
 coverage/
+# Local desktop report generation (the main HTML lives outside this repo)
+docs/RELATORIO_OFFLINE.html

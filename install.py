@@ -129,6 +129,23 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
             )
             created_docs.append(filename)
 
+    # Keep onboarding instructions and prompts next to each new project.
+    # They are documentation, not executable state, and are never overwritten.
+    handbook = docs / "expert-ai-manager"
+    handbook.mkdir(parents=True, exist_ok=True)
+    installed_guides = []
+    for filename in (
+        "COMECE_AQUI.md", "PLUGINS_E_SKILLS.md",
+        "PROMPTS_PRONTOS.md", "PROMPT_PLANEJAMENTO.md",
+    ):
+        source = PACKAGE / "docs" / filename
+        target = handbook / filename
+        if not source.is_file():
+            raise FileNotFoundError("Distribution is incomplete: " + str(source))
+        if not target.exists():
+            shutil.copy2(source, target)
+            installed_guides.append(filename)
+
     ignore = project / ".gitignore"
     content = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
     if ".dev-loop/" not in content.splitlines():
@@ -137,13 +154,16 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
     print(f"Expert AI Manager: {name} [{prefix}]")
     print("Project:", project)
     print("Scripts installed:", len(copied), "| skipped:", len(skipped))
-    print("Created docs:", created_docs)
+    print("Created project docs:", created_docs)
+    print("Added onboarding guides:", installed_guides)
     print("Created configuration:", new_config, "| created checkpoint:", new_state)
     print("State and usage files remain local and ignored by Git.")
-    print("NEXT: Complete the planning prompt and review TASKS.md.")
-    print("NEXT: Open ChatGPT in Edge, then calibrate: py -3 -B scripts/expert_ai_rpa.py calibrate-auto")
-    print("NEXT: Run HUD: pyw -3 -B scripts/expert_ai_hud.py")
-    print("NEXT: Run supervisor only after review: py -3 -B -u scripts/expert_ai_rpa.py run")
+    print("FIRST: Open docs/expert-ai-manager/COMECE_AQUI.md in this project.")
+    print("SECOND: Copy Prompt A from docs/expert-ai-manager/PROMPTS_PRONTOS.md")
+    print("THIRD: Review the plan; only then calibrate and run the supervisor.")
+    print("Calibration (Edge ChatGPT chat in front): py -3 -B scripts/expert_ai_rpa.py calibrate-auto")
+    print("HUD: pyw -3 -B scripts/expert_ai_hud.py")
+    print("Supervisor, after approval: py -3 -B -u scripts/expert_ai_rpa.py run")
 
 
 def main():

@@ -3,6 +3,8 @@
 
 **Versão:** 0.1 (Windows / Python 3.11+). **Natureza:** ferramenta de supervisão de desenvolvimento com ChatGPT já aberto no navegador. O código é genérico; o Óliver's Burger foi apenas o projeto-piloto.
 
+**Primeira instalação em outro projeto?** Comece por **[COMECE_AQUI.md](COMECE_AQUI.md)**. Esse tutorial conduz da instalação até a primeira execução. Os passos para conectar ferramentas estão em **[PLUGINS_E_SKILLS.md](PLUGINS_E_SKILLS.md)**, e as mensagens de planejamento/revisão estão em **[PROMPTS_PRONTOS.md](PROMPTS_PRONTOS.md)**.
+
 ### 1. O que foi construído
 Uma aplicação local com cinco partes:
 - **Supervisor Python**: consulta checkpoint JSON e tarefas Markdown, monitora a janela calibrada, evita envios duplicados, mantém request_id/round e inicia a próxima etapa somente quando houver condição segura.
@@ -44,13 +46,13 @@ cd "$env:USERPROFILE\Desktop\Expert AI Manager"
 py -3 -B install.py --project "C:\Projetos\MeuProjeto" --name "Meu Projeto" --prefix APP
 ```
 
-A pasta `C:\Projetos\MeuProjeto` precisa existir. O instalador copia scripts para `scripts\`, cria templates só quando os arquivos não existem, adiciona `.dev-loop/` ao .gitignore sem apagar entradas e cria `.dev-loop/rpa-config.json` com o **Modo Seguro habilitado**. Com `--update`, scripts existentes recebem cópia de segurança. Nunca sobrescreve a documentação ou o estado local. Ele não acessa o GitHub nem conecta a conta.
+A pasta `C:\Projetos\MeuProjeto` precisa existir (use `New-Item -ItemType Directory -Force -Path "C:\Projetos\MeuProjeto"` antes, se necessário). O instalador copia scripts para `scripts\`, cria templates só quando os arquivos não existem, adiciona `.dev-loop/` ao .gitignore sem apagar entradas e cria `.dev-loop/rpa-config.json` com o **Modo Seguro habilitado**. Além disso, copia o tutorial, a lista de plugins/skills e os prompts para `docs/expert-ai-manager/` no próprio projeto. Com `--update`, scripts existentes recebem cópia de segurança. Nunca sobrescreve a documentação ou o estado local. Ele não acessa o GitHub nem conecta a conta.
 
 ### 6. Faça o planejamento ANTES da automação
 1. Descreva o produto, usuários, limites, tecnologias, integrações, custos, referências visuais e estado atual.
-2. Na conversa do ChatGPT dedicada ao projeto, cole `docs/PROMPT_PLANEJAMENTO.md` com os campos substituídos.
+2. Na conversa do ChatGPT dedicada ao projeto, cole o **Prompt A** de `docs/expert-ai-manager/PROMPTS_PRONTOS.md` (ou o prompt mestre `docs/expert-ai-manager/PROMPT_PLANEJAMENTO.md` se for um projeto complexo), substituindo os campos obrigatórios.
 3. Peça ao GPT que leia o repositório, inventarie riscos e crie `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/TASKS.md`, `docs/STATE.md`, `docs/ROADMAP.md` e `docs/TEST_PLAN.md`.
-4. Revise prioridades, critérios de aceite, dependências e o que realmente poderá ser testado. Não deixe o GPT marcar tarefas como concluídas sem evidência.
+4. Use o **Prompt B** para revisar prioridades, critérios de aceite, dependências e o que realmente poderá ser testado. Não deixe o GPT marcar tarefas como concluídas sem evidência.
 5. Faça o commit do planejamento e só então autorize o início das etapas. O HUD lê automaticamente as tarefas do arquivo, distinguindo [x], [~], [ ], [!].
 
 ### 7. Calibração e início do supervisor
