@@ -29,9 +29,12 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("CRM-001", (project / "docs/TASKS.md").read_text(encoding="utf-8"))
             handbook = project / "docs/expert-ai-manager"
             for filename in ("COMECE_AQUI.md", "PLUGINS_E_SKILLS.md",
-                             "PROMPTS_PRONTOS.md", "PROMPT_PLANEJAMENTO.md"):
+                             "PROMPTS_PRONTOS.md", "PROMPT_PLANEJAMENTO.md",
+                             "TROCA_DE_CONVERSA.md"):
                 self.assertTrue((handbook / filename).is_file(), filename)
             self.assertTrue((project / "scripts/expert_ai_rpa.py").is_file())
+            self.assertTrue((project / "scripts/expert_ai_migration.py").is_file())
+            self.assertTrue((project / "scripts/test_expert_ai_migration.py").is_file())
             self.assertEqual((project / ".gitignore").read_text(encoding="utf-8").count(".dev-loop/"), 1)
 
     def test_reinstall_does_not_replace_plan_configuration_or_prompts(self):
@@ -51,6 +54,28 @@ class InstallerTests(unittest.TestCase):
             for path, text in files.items():
                 self.assertEqual(path.read_text(encoding="utf-8"), text)
             self.assertEqual((project / ".gitignore").read_text(encoding="utf-8").count(".dev-loop/"), 1)
+
+    def test_update_backups_only_changed_scripts_outside_git(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "CRM"
+            project.mkdir()
+            installer.install(project, "Meu CRM", "CRM")
+            target = project / "scripts/expert_ai_rpa.py"
+            changed = target.read_text(encoding="utf-8") + "\n# local override\n"
+            target.write_text(changed, encoding="utf-8")
+            checkpoint = project / ".dev-loop/chat-state.json"
+            checkpoint.write_text('{"status":"running","request_id":"keep"}',
+                                  encoding="utf-8")
+            installer.install(project, "Meu CRM", "CRM", update=True)
+            self.assertEqual(target.read_bytes(),
+                             (PACKAGE / "scripts/expert_ai_rpa.py").read_bytes())
+            backups = list((project / ".dev-loop/backups").iterdir())
+            self.assertEqual(len(backups), 1)
+            self.assertIn("# local override", backups[0].read_text(encoding="utf-8"))
+            self.assertEqual(list((project / "scripts").glob("*.backup-*")), [])
+            self.assertIn('"request_id":"keep"', checkpoint.read_text(encoding="utf-8"))
+            installer.install(project, "Meu CRM", "CRM", update=True)
+            self.assertEqual(len(list((project / ".dev-loop/backups").iterdir())), 1)
 
     def test_invalid_prefix_rejected_without_modification(self):
         with tempfile.TemporaryDirectory() as tmp:

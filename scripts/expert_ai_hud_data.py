@@ -14,6 +14,7 @@ import sys
 
 from expert_ai_control import RUNTIME, STATE, MONITOR, USAGE, CONFIG, PAUSE, LIMIT, load, read_settings
 from expert_ai_safety import new_ledger, pace_status, parse_utc
+from expert_ai_migration import migration_status
 
 ROOT = RUNTIME.parent
 TASKS = ROOT / "docs" / "TASKS.md"
@@ -50,7 +51,11 @@ def timing_view(data: dict) -> dict:
     decision = "Acompanhando o desenvolvimento"
     check = "Verificações internas em segundo plano"
 
-    if data["paused"]:
+    if data.get("migration_phase"):
+        decision = ("Aguardando novo chat" if data["migration_phase"] == "awaiting_new_chat"
+                    else "Conversa vinculada; confira a rodada")
+        check = "Migração segura em andamento; novos envios suspensos"
+    elif data["paused"]:
         decision = "Supervisor pausado"
         check = "Aguardando você retomar"
     elif data["limit_hold"]:
@@ -127,6 +132,7 @@ def progress_snapshot() -> dict:
     cfg = read_settings()
     state = load(STATE)
     monitor = load(MONITOR)
+    migration = migration_status()
     usage = load(USAGE, new_ledger())
     try:
         pacing = pace_status(cfg, usage)
@@ -152,6 +158,7 @@ def progress_snapshot() -> dict:
         "last_quality_check": state.get("last_quality_check") or "Sem registro",
         "summary": state.get("summary", ""),
         "paused": PAUSE.exists(),
+        "migration_phase": migration.get("phase"),
         "limit_hold": LIMIT.exists(),
         "supervisor_live": live,
         "supervisor_action": monitor.get("action") or "—",

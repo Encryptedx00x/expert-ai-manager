@@ -19,13 +19,13 @@ import uuid
 PACKAGE = Path(__file__).resolve().parent
 SCRIPTS = [
     "expert_ai_rpa.py", "expert_ai_state.py", "expert_ai_composer.ps1",
-    "expert_ai_safety.py", "expert_ai_control.py", "expert_ai_hud_data.py",
-    "expert_ai_hud.py",
+    "expert_ai_safety.py", "expert_ai_control.py", "expert_ai_migration.py",
+    "expert_ai_hud_data.py", "expert_ai_hud.py",
 ]
 TESTS = [
     "test_expert_ai_rpa.py", "test_expert_ai_rpa_delivery.py",
     "test_expert_ai_state.py", "test_expert_ai_safety.py",
-    "test_expert_ai_hud.py",
+    "test_expert_ai_hud.py", "test_expert_ai_migration.py",
 ]
 DEFAULT_CONFIG = {
     "schema_version": 1,
@@ -83,12 +83,15 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
         target = scripts / filename
         if not source.is_file():
             raise FileNotFoundError("Distribution is incomplete: " + str(source))
-        if target.exists() and not update:
-            skipped.append(filename)
-            continue
         if target.exists():
+            if not update or target.read_bytes() == source.read_bytes():
+                skipped.append(filename)
+                continue
+            # Never put backups beside tracked source files; keep Git clean.
+            backups = runtime / "backups"
+            backups.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            backup = target.with_name(target.name + f".backup-{timestamp}")
+            backup = backups / f"{filename}.backup-{timestamp}-{uuid.uuid4().hex[:8]}"
             shutil.copy2(target, backup)
         shutil.copy2(source, target)
         copied.append(filename)
@@ -137,6 +140,7 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
     for filename in (
         "COMECE_AQUI.md", "PLUGINS_E_SKILLS.md",
         "PROMPTS_PRONTOS.md", "PROMPT_PLANEJAMENTO.md",
+        "TROCA_DE_CONVERSA.md",
     ):
         source = PACKAGE / "docs" / filename
         target = handbook / filename

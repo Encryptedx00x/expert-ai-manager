@@ -13,6 +13,7 @@ from tkinter import messagebox, ttk
 
 from expert_ai_control import RUNTIME, command, load, atomic_save, SETTABLE
 from expert_ai_hud_data import progress_snapshot, timing_view
+from expert_ai_migration import migration_status, recovery_prompt
 
 SETTINGS = RUNTIME / "hud-preferences.json"
 REFRESH_MS = 1500
@@ -59,12 +60,15 @@ class HUD:
         self.tab_overview = ttk.Frame(self.tab, padding=12)
         self.tab_tasks = ttk.Frame(self.tab, padding=10)
         self.tab_settings = ttk.Frame(self.tab, padding=10)
+        self.tab_migration = ttk.Frame(self.tab, padding=12)
         self.tab.add(self.tab_overview, text="Visão geral")
         self.tab.add(self.tab_tasks, text="Tarefas")
         self.tab.add(self.tab_settings, text="Configuração")
+        self.tab.add(self.tab_migration, text="Conversa")
         self.build_overview()
         self.build_tasks()
         self.build_settings()
+        self.build_migration()
         self.footer = ttk.Label(root, text="RPA local • sem novas mensagens para atualizar o HUD",
                                 foreground=MUTED)
         self.footer.pack(anchor="w", padx=16, pady=(0, 8))
@@ -112,6 +116,8 @@ class HUD:
         ttk.Button(bar, text="Pausar", command=lambda: self.action("pause")).pack(side="left", padx=(0, 6))
         ttk.Button(bar, text="Retomar", command=lambda: self.action("resume")).pack(side="left", padx=(0, 6))
         ttk.Button(bar, text="Limite detectado", command=lambda: self.action("limit-hold")).pack(side="left")
+        self.migration_banner = ttk.Label(tab, text="Troca de conversa em andamento. Abra a aba Conversa.",
+                                          foreground="#9a620f", wraplength=380)
         self.headline(tab, "Última entrega")
         for label, key in (("Commit", "commit"), ("Tarefa", "task"), ("Testes", "quality"),
                            ("Resumo", "summary")):
@@ -187,6 +193,121 @@ class HUD:
         ttk.Label(tab, text="Somente remova o alerta depois de verificar os limites da plataforma.",
                   foreground=MUTED, wraplength=370).pack(anchor="w", pady=5)
 
+    def build_migration(self):
+        tab = self.tab_migration
+        self.headline(tab, "Trocar de conversa")
+        ttk.Label(
+            tab,
+            text="Se o chat chegar ao limite, prepare uma troca segura. "
+                 "A ferramenta NÃO abre, envia ou troca conversas sozinha.",
+            foreground=MUTED, wraplength=370,
+        ).pack(anchor="w", pady=(0, 10))
+        self.migration_label = ttk.Label(tab, text="Nenhuma troca em andamento.",
+                                         font=("Segoe UI", 10, "bold"), wraplength=370)
+        self.migration_label.pack(anchor="w", pady=(4, 12))
+        ttk.Button(tab, text="1. Preparar troca e pausar envios",
+                   command=self.prepare_migration_ui).pack(fill="x", pady=4)
+        ttk.Button(tab, text="2. Ver / copiar prompt para o novo chat",
+                   command=self.show_migration_prompt).pack(fill="x", pady=4)
+        ttk.Label(
+            tab,
+            text="3. Abra a nova conversa e envie o prompt. Depois, no PowerShell "
+                 "do projeto, rode migrate-attach e volte ao Edge durante a contagem.",
+            wraplength=370, foreground=MUTED,
+        ).pack(anchor="w", pady=(12, 4))
+        ttk.Label(
+            tab,
+            text="py -3 -B scripts\\expert_ai_rpa.py migrate-attach",
+            font=MONO, wraplength=370,
+        ).pack(anchor="w", pady=4)
+        ttk.Label(
+            tab,
+            text="4. Reconcile a rodada antiga até ready no novo chat. "
+                 "Finalize somente depois de verificar os arquivos e o checkpoint.",
+            wraplength=370, foreground=MUTED,
+        ).pack(anchor="w", pady=(12, 4))
+        ttk.Button(tab, text="5. Finalizar e retomar, se seguro",
+                   command=self.finish_migration_ui).pack(fill="x", pady=4)
+        ttk.Button(tab, text="Cancelar preparação (sem mudar chat)",
+                   command=self.cancel_migration_ui).pack(fill="x", pady=(12, 4))
+        ttk.Label(
+            tab,
+            text="A migração preserva request_id, rodada, rascunhos, commits e limites. "
+                 "Se houver uma tarefa running, a retomada aguarda a conclusão verificada.",
+            wraplength=370, foreground=MUTED,
+        ).pack(anchor="w", pady=(10, 0))
+
+    def prepare_migration_ui(self):
+        if not messagebox.askyesno(
+            "Preparar nova conversa",
+            "Pausar novos envios e gerar o prompt para migrar? "
+            "O trabalho já iniciado continuará exigindo reconciliação.",
+            parent=self.root,
+        ):
+            return
+        try:
+            command("migrate-start")
+            self.poll()
+            self.show_migration_prompt()
+        except Exception as exc:
+            messagebox.showerror("Não foi possível preparar", str(exc), parent=self.root)
+
+    def show_migration_prompt(self):
+        handoff = migration_status()
+        if not handoff:
+            messagebox.showinfo("Troca de conversa",
+                                "Primeiro clique em 'Preparar troca'.", parent=self.root)
+            return
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Prompt para continuar em outro chat")
+        dialog.geometry("650x540")
+        dialog.transient(self.root)
+        ttk.Label(dialog, text="Copie o texto para a conversa NOVA. Não inicie outro supervisor.",
+                  wraplength=590).pack(fill="x", padx=12, pady=(12, 4))
+        frame = ttk.Frame(dialog)
+        frame.pack(fill="both", expand=True, padx=12, pady=8)
+        scroll = ttk.Scrollbar(frame)
+        scroll.pack(side="right", fill="y")
+        text = tk.Text(frame, wrap="word", font=("Consolas", 10), yscrollcommand=scroll.set)
+        text.pack(side="left", fill="both", expand=True)
+        scroll.configure(command=text.yview)
+        content = recovery_prompt(handoff)
+        text.insert("1.0", content)
+        text.configure(state="disabled")
+        actions = ttk.Frame(dialog)
+        actions.pack(fill="x", padx=12, pady=(0, 12))
+
+        def copy_prompt():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            messagebox.showinfo("Copiado", "Prompt copiado. Abra o novo chat e cole.",
+                                parent=dialog)
+
+        ttk.Button(actions, text="Copiar prompt", command=copy_prompt).pack(side="left")
+        ttk.Button(actions, text="Fechar", command=dialog.destroy).pack(side="right")
+
+    def finish_migration_ui(self):
+        try:
+            command("migrate-finish")
+            self.poll()
+            messagebox.showinfo("Migração", "Conversa migrada. O supervisor pode continuar "
+                                "quando os limites permitirem.", parent=self.root)
+        except Exception as exc:
+            messagebox.showerror("Migração ainda pendente", str(exc), parent=self.root)
+
+    def cancel_migration_ui(self):
+        if not messagebox.askyesno(
+            "Cancelar preparação",
+            "Continuar usando a conversa anterior? Só cancele se ainda for possível.",
+            parent=self.root,
+        ):
+            return
+        try:
+            command("migrate-cancel")
+            self.poll()
+        except Exception as exc:
+            messagebox.showerror("Não foi possível cancelar", str(exc), parent=self.root)
+
     def set_topmost(self):
         self.root.attributes("-topmost", self.topmost.get())
 
@@ -237,6 +358,19 @@ class HUD:
             data = progress_snapshot()
             state = data["state"]
             paused = data["paused"]
+            migration_phase = data.get("migration_phase")
+            migration_labels = {
+                "awaiting_new_chat": "Aguardando novo chat e calibração.",
+                "attached": "Novo chat vinculado. Confira checkpoint e finalize.",
+            }
+            self.migration_label.configure(
+                text=migration_labels.get(migration_phase, "Nenhuma troca em andamento.")
+            )
+            if migration_phase:
+                if not self.migration_banner.winfo_manager():
+                    self.migration_banner.pack(before=self.action_bar, anchor="w", pady=(5, 2))
+            elif self.migration_banner.winfo_manager():
+                self.migration_banner.pack_forget()
             color = "#b34b2e" if paused or data["limit_hold"] or state == "blocked" else ACCENT
             self.vars["status"].set(("PAUSADO · " if paused else "") + state.upper())
             timing = timing_view(data)

@@ -23,6 +23,7 @@ O projeto Óliver's Burger foi apenas o piloto. O script pode ser instalado em q
 - **Pausas de descanso** opcionais: curtas e ocasionais longas, com duração dentro de intervalos configuráveis.
 - Inspeções periódicas entre 10 e 20 minutos, sem atrasar arbitrariamente um checkpoint pronto (os limites de uso continuam valendo).
 - **HUD Tkinter** leve, sem servidor web: estados e progresso em linguagem clara, contador visual de inatividade até 90 segundos (reinicia com mouse/teclado), pausas, tarefas, commit e testes. As checagens técnicas de 10 segundos ficam ocultas no painel.
+- **Troca assistida de conversa (v1)**: quando o chat ficar extenso demais, abra a aba **Conversa**, pause novos envios, copie o prompt de recuperação, abra um chat novo e valide a vinculação antes de retomar. Sem perda do checkpoint ou envio duplicado. Consulte [Troca de conversa](docs/TROCA_DE_CONVERSA.md).
 - Reutilizável em qualquer projeto que tenha um diretório de trabalho e uma conversa própria.
 
 ## Instalação rápida (Windows)
@@ -55,6 +56,7 @@ py -3 -B -u scripts\expert_ai_rpa.py run
 - [Prompts prontos](docs/PROMPTS_PRONTOS.md): mensagens A (planejar), B (revisar), C (diagnosticar), D (status), E (ferramentas).
 - [Prompt mestre](docs/PROMPT_PLANEJAMENTO.md): planejamento aprofundado.
 - [Guia completo](docs/GUIA_COMPLETO.md): configurações e solução de problemas.
+- [Troca de conversa](docs/TROCA_DE_CONVERSA.md): passo a passo para migrar quando o chat atingir seu limite.
 - [Templates](templates): AGENTS, TASKS, STATE e ARCHITECTURE para novos projetos.
 
 ## Controles

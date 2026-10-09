@@ -30,6 +30,7 @@ import time
 import uuid
 
 from expert_ai_safety import DEFAULT_SAFETY, new_ledger, pace_status, record_attempt, parse_utc
+from expert_ai_migration import MIGRATION, migration_status, attach_migration
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / ".dev-loop"
@@ -306,8 +307,10 @@ def composer_bounds(hwnd: int) -> dict:
     return bounds
 
 
-def calibrate_auto() -> None:
-    """Bind to the foreground ChatGPT conversation, not another browser tab."""
+def calibrate_auto(*, migration_title: str | None = None) -> None:
+    """Bind to the foreground ChatGPT composer; optionally guard a chat migration."""
+    if MIGRATION.exists() and migration_title is None:
+        raise RuntimeError("Troca de conversa em andamento: use migrate-attach.")
     hwnd = U.GetForegroundWindow()
     title = win_title(hwnd)
     exe = process_name(hwnd)
@@ -315,6 +318,8 @@ def calibrate_auto() -> None:
         raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/ChatGPT")
     if not title.strip():
         raise RuntimeError("The selected ChatGPT window must have a title")
+    if migration_title is not None and title.casefold() == migration_title.casefold():
+        raise RuntimeError("A nova conversa precisa de um título diferente da anterior.")
     # Identify the live ChatGPT composer by its accessible name instead of
     # assuming every project conversation has the same browser window title.
     bounds = composer_bounds(hwnd)
@@ -335,7 +340,26 @@ def calibrate_auto() -> None:
           f"composer ({rx:.3f}, {ry:.3f}); NO MESSAGE SENT")
 
 
+def migrate_attach() -> None:
+    """User-selected new chat: read-only composer check followed by calibration."""
+    handoff = migration_status()
+    if handoff.get("phase") != "awaiting_new_chat" or not PAUSE.exists():
+        raise RuntimeError("Prepare a troca e confirme a pausa antes de anexar.")
+    if read_json(STATE).get("status") == "pending_send":
+        raise RuntimeError("Há um rascunho pendente; resolva antes de trocar de chat.")
+    print("Abra o NOVO chat no Edge e deixe-o em primeiro plano. Captura em 6 segundos...")
+    time.sleep(6)
+    calibrate_auto(migration_title=handoff.get("previous_window_title", ""))
+    current = read_json(CONFIG)
+    attach_migration(current["window_title"])
+    print("Nova conversa anexada, supervisor AINDA PAUSADO.")
+    print("Depois de reconciliar o checkpoint até ready, execute:")
+    print("py -3 -B scripts/expert_ai_control.py migrate-finish")
+
+
 def calibrate() -> None:
+    if MIGRATION.exists():
+        raise RuntimeError("Troca de conversa em andamento: use migrate-attach.")
     print("Abra ESTA conversa no ChatGPT, deixe a janela ativa e posicione o mouse")
     print("sobre o CENTRO da caixa de mensagem. Captura em 6 segundos...")
     time.sleep(6)
@@ -368,6 +392,8 @@ def calibrate() -> None:
 
 def decision(state: dict, config: dict, pending: list[str],
              ram: float, idle: float, paused: bool) -> str:
+    if MIGRATION.exists():
+        return "conversation migration pending"
     status = state.get("status", "idle")
     if paused:
         return "paused by PAUSE file"
@@ -749,7 +775,7 @@ def run(once: bool = False, dry_run: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["status", "calibrate", "calibrate-auto", "check", "run", "pause", "resume", "recover"])
+    parser.add_argument("command", choices=["status", "calibrate", "calibrate-auto", "migrate-attach", "check", "run", "pause", "resume", "recover"])
     args = parser.parse_args()
     RUNTIME.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -762,6 +788,8 @@ def main() -> None:
         calibrate()
     elif args.command == "calibrate-auto":
         calibrate_auto()
+    elif args.command == "migrate-attach":
+        migrate_attach()
     elif args.command == "check":
         run(once=True, dry_run=True)
     elif args.command == "recover":
@@ -770,6 +798,8 @@ def main() -> None:
         PAUSE.touch()
         print("Paused; running supervisor will stop sending.")
     elif args.command == "resume":
+        if MIGRATION.exists():
+            raise RuntimeError("Finalize a migração antes de retomar os envios.")
         PAUSE.unlink(missing_ok=True)
         print("Resumed; a blocked JSON state must still be inspected manually.")
     else:

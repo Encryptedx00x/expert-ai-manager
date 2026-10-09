@@ -114,6 +114,10 @@ py -3 -B -u scripts\expert_ai_rpa.py run
 
 Deixe esse terminal em execução. A primeira continuação será enviada apenas quando as condições e limites permitirem. O prompt automático, o `request_id` e o estado são gerenciados pelo script; **não é necessário digitar “continue” a cada etapa**.
 
+## Se a conversa atingir o limite de tamanho
+
+Na aba **Conversa** do HUD, clique **Preparar troca e pausar envios**; o aplicativo entregará um prompt para copiar para uma conversa nova, que deve ter título diferente. Com o novo chat aberto, use o comando `py -3 -B scripts/expert_ai_rpa.py migrate-attach` e finalize somente após o checkpoint anterior ser reconciliado e ficar `ready`. Veja [TROCA_DE_CONVERSA.md](TROCA_DE_CONVERSA.md). O aplicativo ainda não abre o novo chat automaticamente e não consegue identificar com certeza o alerta de limite.
+
 ## Passo 8. Acompanhar, pausar e voltar
 
 No projeto:

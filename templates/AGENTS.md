@@ -21,6 +21,9 @@ Este projeto será conduzido em etapas pequenas, rastreáveis e verificáveis. O
 9. Atualizar o JSON de checkpoint com last_commit, last_task e last_quality_check preservando request_id/round; usar update atômico.
 10. Encerrar com py -3 -B scripts/expert_ai_state.py ready <request_id> "resumo", ou blocked/done conforme a situação.
 
+## Continuação após limite de conversa
+Se a conversa atingir seu limite, **não crie outro request_id nem considere a tarefa antiga concluída**. O usuário iniciará a troca na aba Conversa do HUD; o Expert AI Manager criará `.dev-loop/chat-migration.json` e pausará novos envios. No novo chat, confira o checkpoint e o trabalho real já realizado. Se a rodada estiver `running`, termine e marque `ready` apenas após a revisão; se estiver `blocked`, investigue sem forçar. A nova janela só será anexada pelo usuário com `py -3 -B scripts/expert_ai_rpa.py migrate-attach`, e o fluxo só continuará após `migrate-finish`. Não remova o arquivo PAUSE nem o marcador manualmente.
+
 ## Segurança e recursos
 - Não modificar Docker/WSL/serviços de projetos não relacionados.
 - Não contornar limites de plataforma ou autenticação.

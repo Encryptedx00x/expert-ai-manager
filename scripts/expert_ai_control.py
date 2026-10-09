@@ -3,6 +3,7 @@
 Only locally persisted, explicitly visible controls. No UI camouflage.
 Run: py -3 -B scripts/expert_ai_control.py status | safe-on | safe-off |
      breaks-on | breaks-off | pause | resume | limit-hold | limit-clear |
+     migrate-start | migrate-finish | migrate-cancel |
      set <allowlisted-key> <value>
 """
 from __future__ import annotations
@@ -73,6 +74,7 @@ def set_option(field: str, value) -> dict:
     return merged
 
 def snapshot() -> dict:
+    from expert_ai_migration import migration_status
     config = read_settings()
     usage = load(USAGE, new_ledger())
     return {
@@ -81,6 +83,7 @@ def snapshot() -> dict:
         "round": load(STATE).get("round"),
         "last_commit": load(STATE).get("last_commit"),
         "paused": PAUSE.exists(),
+        "migration": migration_status(),
         "platform_limit_hold": LIMIT.exists(),
         "config": {key: config[key] for key in DEFAULT_SAFETY},
         "periodic_check_window_minutes": [
@@ -92,9 +95,19 @@ def snapshot() -> dict:
     }
 
 def command(name: str, field: str | None = None, value: str | None = None) -> dict:
-    if name == "pause":
+    from expert_ai_migration import (migration_status, prepare_migration,
+                                     finish_migration, cancel_migration)
+    if name == "migrate-start":
+        prepare_migration()
+    elif name == "migrate-finish":
+        finish_migration()
+    elif name == "migrate-cancel":
+        cancel_migration()
+    elif name == "pause":
         PAUSE.touch()
     elif name == "resume":
+        if migration_status():
+            raise RuntimeError("Troca de conversa em andamento. Finalize a migração antes de retomar.")
         PAUSE.unlink(missing_ok=True)
     elif name == "limit-hold":
         LIMIT.touch()
@@ -121,7 +134,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=[
         "status", "pause", "resume", "limit-hold", "limit-clear",
-        "safe-on", "safe-off", "breaks-on", "breaks-off", "set"
+        "safe-on", "safe-off", "breaks-on", "breaks-off", "set",
+        "migrate-start", "migrate-finish", "migrate-cancel"
     ])
     parser.add_argument("field", nargs="?")
     parser.add_argument("value", nargs="?")
