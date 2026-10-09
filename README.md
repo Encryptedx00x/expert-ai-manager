@@ -24,6 +24,7 @@ O projeto Óliver's Burger foi apenas o piloto. O script pode ser instalado em q
 - Inspeções periódicas entre 10 e 20 minutos, sem atrasar arbitrariamente um checkpoint pronto (os limites de uso continuam valendo).
 - **HUD Tkinter** leve, sem servidor web: estados e progresso em linguagem clara, contador visual de inatividade até 90 segundos (reinicia com mouse/teclado), pausas, tarefas, commit e testes. As checagens técnicas de 10 segundos ficam ocultas no painel.
 - **Troca assistida de conversa (v1)**: quando o chat ficar extenso demais, abra a aba **Conversa**, pause novos envios, copie o prompt de recuperação, abra um chat novo e valide a vinculação antes de retomar. Sem perda do checkpoint ou envio duplicado. Consulte [Troca de conversa](docs/TROCA_DE_CONVERSA.md).
+- **Contexto mais eficiente**: o próximo prompt pede lotes de 2–4 tarefas relacionadas, leituras direcionadas e saídas curtas; exige os mesmos testes, revisões, commits e segurança. O supervisor registra a quantidade de rodadas desde a última migração verificada e avisa nos logs e em `expert_ai_rpa.py status` após 5 e 8 rodadas. **São estimativas, não leitura de tokens reais.** Sem bloqueios automáticos por essa contagem.
 - Reutilizável em qualquer projeto que tenha um diretório de trabalho e uma conversa própria.
 
 ## Instalação rápida (Windows)

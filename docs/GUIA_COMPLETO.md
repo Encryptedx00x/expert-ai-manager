@@ -84,6 +84,7 @@ Na aba **Visão geral**: estado, decisão, rodada, acompanhamento, próxima soli
 - `requested`: mensagem já pode ter sido enviada; não tente reenviar.
 - `running`: GPT desenvolvendo uma etapa; o monitor não inicia outra.
 - `ready`: rodada liberada; o supervisor aguarda limites, foco e inatividade.
+- **Estimativa de contexto**: como não há acesso oficial ao total de tokens de uma conversa, o manager usa apenas a quantidade de rodadas após uma migração confirmada (`.dev-loop/conversation-session.json`). Avisa após 5/8 rodadas nos logs e no comando `status`, sem interromper tarefas. Os prompts novos incentivam 2–4 tarefas relacionadas e saídas de terminal/diff curtas; as validações permanecem obrigatórias.
 - `blocked`/PAUSE: intervenção necessária. Confira os logs antes de retomar.
 
 Comandos manuais no diretório do projeto:

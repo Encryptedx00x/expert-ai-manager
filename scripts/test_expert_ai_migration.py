@@ -8,6 +8,7 @@ import expert_ai_control as control
 import expert_ai_migration as migration
 import expert_ai_hud_data as hud_data
 import expert_ai_rpa as rpa
+import expert_ai_context as context
 
 
 class MigrationTests(unittest.TestCase):
@@ -109,6 +110,10 @@ class MigrationTests(unittest.TestCase):
         self.assertFalse(self.pause.exists())
         self.assertFalse(self.marker.exists())
         self.assertEqual(control.load(self.state)["request_id"], "old-request")
+        session = context.read_session(self.marker.with_name("conversation-session.json"))
+        self.assertTrue(session["baseline_known"])
+        self.assertEqual(session["start_round"], 13)
+        self.assertEqual(context.context_budget(18, session)["level"], "suggest")
 
     def test_cancel_only_before_attach_preserves_original_pause(self):
         self.pause.touch()

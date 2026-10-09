@@ -20,12 +20,13 @@ PACKAGE = Path(__file__).resolve().parent
 SCRIPTS = [
     "expert_ai_rpa.py", "expert_ai_state.py", "expert_ai_composer.ps1",
     "expert_ai_safety.py", "expert_ai_control.py", "expert_ai_migration.py",
-    "expert_ai_hud_data.py", "expert_ai_hud.py",
+    "expert_ai_context.py", "expert_ai_hud_data.py", "expert_ai_hud.py",
 ]
 TESTS = [
     "test_expert_ai_rpa.py", "test_expert_ai_rpa_delivery.py",
     "test_expert_ai_state.py", "test_expert_ai_safety.py",
     "test_expert_ai_hud.py", "test_expert_ai_migration.py",
+    "test_expert_ai_context.py",
 ]
 DEFAULT_CONFIG = {
     "schema_version": 1,
@@ -102,8 +103,8 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
         f"Remote Desktop Commander. Leia AGENTS.md, docs/TASKS.md e docs/STATE.md. "
         f"Valide o request_id na mensagem e em .dev-loop/chat-state.json; "
         f"use py -3 -B scripts/expert_ai_state.py ack <request_id> para marcar running. "
-        f"Execute uma etapa coerente, teste, revise o diff, atualize as tarefas e faça "
-        f"commit apenas quando seguro. Use heartbeat em etapas longas. "
+        f"Trabalhe em até 2 a 4 tarefas relacionadas, quando viável; teste e revise o diff, "
+        f"atualize tarefas e faça commit apenas quando seguro. Use heartbeat em etapas longas. "
         f"Antes de encerrar, marque ready, blocked ou done com o mesmo request_id. "
         f"Informe resumo dos testes e commit. Preserve os demais projetos e serviços. "
         f"Não fabrique conclusões nem contorne limites da plataforma."

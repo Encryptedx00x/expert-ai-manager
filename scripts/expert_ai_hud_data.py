@@ -15,6 +15,7 @@ import sys
 from expert_ai_control import RUNTIME, STATE, MONITOR, USAGE, CONFIG, PAUSE, LIMIT, load, read_settings
 from expert_ai_safety import new_ledger, pace_status, parse_utc
 from expert_ai_migration import migration_status
+from expert_ai_context import context_budget, read_session
 
 ROOT = RUNTIME.parent
 TASKS = ROOT / "docs" / "TASKS.md"
@@ -133,6 +134,7 @@ def progress_snapshot() -> dict:
     state = load(STATE)
     monitor = load(MONITOR)
     migration = migration_status()
+    budget = context_budget(state.get("round", 0), read_session())
     usage = load(USAGE, new_ledger())
     try:
         pacing = pace_status(cfg, usage)

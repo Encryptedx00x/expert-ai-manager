@@ -13,8 +13,8 @@ Este projeto será conduzido em etapas pequenas, rastreáveis e verificáveis. O
 1. Ler .dev-loop/chat-state.json, verificar o request_id desta mensagem e confirmar status requested ou pending_send.
 2. Marcar running: py -3 -B scripts/expert_ai_state.py ack <request_id>.
 3. Ler AGENTS.md, docs/TASKS.md, docs/STATE.md, docs/ARCHITECTURE.md e o código relevante.
-4. Escolher uma etapa pequena com critérios de aceite e dependências atendidas.
-5. Implementar, testar (incluindo um teste de regressão quando couber), revisar diff e riscos.
+4. Escolher um lote coerente de 2–4 tarefas relacionadas quando os critérios de aceite e dependências permitirem. Se o escopo, o tempo, a infraestrutura ou a segurança não permitirem, trabalhar em uma tarefa só.
+5. Implementar, testar (incluindo regressão quando couber), revisar o diff e os riscos de cada alteração. Reduzir o texto devolvido à conversa usando `git diff --stat`, trechos relevantes e resumo de logs, **sem reduzir os testes realmente executados**.
 6. Atualizar docs/TASKS.md: [x] feito/validado, [~] parcial, [ ] pendente, [!] adiado com motivo.
 7. Registrar no docs/STATE.md a entrega, pendências, resultado dos testes, commit e próximo passo.
 8. Fazer commit apenas quando seguro; não incluir .env, segredos, logs, dumps ou .dev-loop.

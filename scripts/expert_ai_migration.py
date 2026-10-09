@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from expert_ai_control import ROOT, RUNTIME, CONFIG, STATE, PAUSE, LIMIT, load, atomic_save
+from expert_ai_context import start_session
 
 MIGRATION = RUNTIME / "chat-migration.json"
 
@@ -127,6 +128,9 @@ def finish_migration() -> dict:
     cfg = load(CONFIG)
     if not cfg.get("calibrated") or cfg.get("window_title") != handoff.get("new_window_title"):
         raise RuntimeError("Calibração mudou após o anexo; inspecione a conversa.")
+    # Only an explicitly completed handoff starts a fresh conversation estimate.
+    start_session(state.get("round", 0), cfg["window_title"], known_new=True,
+                  path=MIGRATION.with_name("conversation-session.json"))
     MIGRATION.unlink()
     if not handoff.get("previously_paused"):
         PAUSE.unlink()

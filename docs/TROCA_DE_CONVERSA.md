@@ -70,6 +70,14 @@ py -3 -B scripts\expert_ai_control.py migrate-cancel
 
 Isso restaura a condição de pausa anterior, sem modificar o checkpoint. **Depois de anexar um novo chat, não existe retorno automático**: inspecione a configuração e o estado antes de corrigir manualmente.
 
+## Prevenção de conversas muito extensas
+
+- O Expert AI Manager agora envia orientações para agrupar **2–4 tarefas relacionadas**, sem comprometer os testes ou a segurança, e resume saídas de comandos/logs na própria conversa.
+- Após uma migração **realmente concluída**, registra a rodada inicial desta conversa em `.dev-loop/conversation-session.json` (ignorado pelo Git). O contador estima rodadas, **não o número de tokens**, tamanho do contexto nem o limite exato do produto.
+- Após **5 rodadas** desde a troca, recomenda considerar uma conversa nova; após **8 rodadas**, sugere planejar a migração imediatamente. São apenas avisos no log e em `py -3 -B scripts/expert_ai_rpa.py status`; não alteram o estado `ready`, não apagam `request_id` e não impedem a próxima tarefa.
+- Ao atualizar um projeto antigo que nunca registrou a rodada inicial, o HUD/estado indicará histórico anterior **desconhecido**; não será inventado um consumo de tokens nem um número de rodadas passadas.
+- Ao visualizar esses avisos, use os passos de migração acima em um momento com checkpoint seguro, preferencialmente `ready`.
+
 ## Limitações e segurança
 
 - **Não há detecção automática confiável do limite da conversa.** A v1 depende de você reconhecer o aviso e acionar o botão no HUD.

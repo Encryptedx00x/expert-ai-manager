@@ -31,6 +31,8 @@ import uuid
 
 from expert_ai_safety import DEFAULT_SAFETY, new_ledger, pace_status, record_attempt, parse_utc
 from expert_ai_migration import MIGRATION, migration_status, attach_migration
+from expert_ai_context import (compact_message, initialize_if_missing,
+                               read_session, context_budget)
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / ".dev-loop"
@@ -336,6 +338,8 @@ def calibrate_auto(*, migration_title: str | None = None) -> None:
                    "composer_ratio_x": round(rx, 5), "composer_ratio_y": round(ry, 5),
                    "calibrated": True})
     write_json(CONFIG, config)
+    initialize_if_missing(read_json(STATE).get("round", 0), title,
+                          path=CONFIG.with_name("conversation-session.json"))
     print(f"Auto-calibrated browser/app: {title!r}, {exe}, "
           f"composer ({rx:.3f}, {ry:.3f}); NO MESSAGE SENT")
 
@@ -386,6 +390,8 @@ def calibrate() -> None:
                    "composer_ratio_x": round(rx, 5), "composer_ratio_y": round(ry, 5),
                    "calibrated": True})
     write_json(CONFIG, config)
+    initialize_if_missing(read_json(STATE).get("round", 0), title,
+                          path=CONFIG.with_name("conversation-session.json"))
     print(f"Calibrated: {title!r}, {exe}, textbox at ({rx:.3f}, {ry:.3f})")
     print("No message was sent. Start with: py -3 scripts/expert_ai_rpa.py run")
 
@@ -563,7 +569,7 @@ def send_once(config: dict, state: dict) -> None:
         }
         # Persist before typing, so a crash cannot generate a second ID.
         write_json(STATE, drafted)
-        text = config["message"] + f" [request_id: {request_id}]"
+        text = compact_message(config["message"], request_id)
         send_text(text, expected_hwnd=hwnd)
         written = read_json(STATE)
         if written.get("status") != "pending_send" or written.get("request_id") != request_id:
@@ -621,6 +627,7 @@ def show_status() -> None:
         "pacing": pace_status(config, read_json(USAGE, new_ledger())),
         "monitor": read_json(MONITOR),
         "next_tasks": pending[:6], "paused": PAUSE.exists(),
+        "conversation_budget": context_budget(state.get("round", 0), read_session()),
         "ram_gib": round(free_ram_gib(), 2),
         "user_idle_seconds": round(user_idle_seconds(), 1),
     }, indent=2, ensure_ascii=False))
@@ -681,6 +688,7 @@ def wait_for_change(state: dict, config: dict, timeout_seconds: float,
 def run(once: bool = False, dry_run: bool = False) -> None:
     lock = acquire_lock()
     last_action = None
+    last_context_notice = None
     try:
         logging.info("Supervisor active: event-driven completion plus configurable periodic checks")
         while True:
@@ -700,6 +708,13 @@ def run(once: bool = False, dry_run: bool = False) -> None:
                 logging.info("state=%s pending=%d RAM=%.2fGiB idle=%.0fs decision=%s",
                              state.get("status"), len(pending), ram, idle, action)
             last_action = action
+            budget = context_budget(state.get("round", 0), read_session())
+            notice = (budget["level"], budget["rounds"])
+            if (budget["level"] in ("suggest", "recommend") and notice != last_context_notice
+                    and state.get("status") == "ready"):
+                logging.warning("Conversa longa: %s. Migração pelo HUD na aba Conversa.",
+                                budget["label"])
+                last_context_notice = notice
             if action == "finished":
                 print("All tasks concluded and verified by GPT; stopping supervisor.")
                 return
@@ -764,6 +779,7 @@ def run(once: bool = False, dry_run: bool = False) -> None:
                 "platform_limit_hold": LIMIT.exists(),
                 "safe_mode_enabled": config["safe_mode_enabled"],
                 "breaks_enabled": config["breaks_enabled"],
+                "conversation_budget": budget,
             }
             write_monitor(monitor)
             wake_reason = wait_for_change(state, config, next_check_seconds, monitor=monitor)
