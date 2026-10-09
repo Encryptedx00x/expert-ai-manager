@@ -19,6 +19,11 @@ class SafetyTests(unittest.TestCase):
         self.usage = s.record_attempt(self.cfg, self.usage, f"id-{n}", at=at,
                                       choose_duration=choose)
 
+    def test_default_caps_match_twelve_minute_cadence(self):
+        self.assertEqual(self.cfg["min_minutes_between_requests"], 12)
+        self.assertEqual(self.cfg["max_requests_per_hour"], 5)
+        self.assertEqual(self.cfg["max_requests_per_24_hours"], 120)
+
     def test_defaults_are_safe_and_breaks_enabled(self):
         self.assertTrue(self.cfg["safe_mode_enabled"])
         self.assertTrue(self.cfg["breaks_enabled"])
@@ -66,6 +71,7 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(self.usage["total_attempts"], 2)
 
     def test_hourly_cap_is_enforced(self):
+        self.cfg["max_requests_per_hour"] = 4  # Isolate the cap test from new 5/hour defaults.
         self.cfg["short_break_every_requests"] = 9
         self.cfg["long_break_every_requests"] = 18
         for n in range(4):

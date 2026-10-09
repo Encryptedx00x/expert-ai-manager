@@ -72,7 +72,7 @@ O HUD é um **monitor independente**: fechá-lo não para o supervisor. O superv
 
 ### 8. HUD, opções e pausas
 Na aba **Visão geral**: estado, decisão, rodada, contagem regressiva para a próxima verificação, próxima solicitação elegível, uso recente, último commit, última tarefa, testes e resumo. Na aba **Tarefas**: concluídas, parciais e pendentes extraídas de `docs/TASKS.md`. Na aba **Configuração**: Modo Seguro, descansos e valores de limites.
-- Modo Seguro: habilitado por padrão. Intervalo mínimo entre solicitações: 12 min; teto 4 por hora e 24 em 24h. Pode ser alterado. Mesmo desativado, o supervisor continua respeitando foco, estado, inatividade e salvaguardas contra duplicidade.
+- Modo Seguro: habilitado por padrão. Intervalo mínimo entre solicitações: 12 min; teto 5 por hora e 120 em 24h. Pode ser alterado. Mesmo desativado, o supervisor continua respeitando foco, estado, inatividade e salvaguardas contra duplicidade.
 - Descansos: habilitados por padrão; são opcionais e podem ser desativados mantendo os outros limites.
 - Verificações periódicas: entre 10 e 20 minutos, independentes dos limites de envio.
 - Estado `pending_send`: texto foi preparado mas o clique não foi confirmado; o supervisor tenta apenas o botão quando seguro, sem redigitar ou criar outro request_id.

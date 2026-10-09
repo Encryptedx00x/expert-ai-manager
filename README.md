@@ -8,7 +8,7 @@ Ferramenta local de **supervisão de desenvolvimento por etapas com ChatGPT**, P
 - Controla o checkpoint em `.dev-loop/chat-state.json`: `ready → pending_send → requested → running → ready`.
 - Evita novos envios enquanto o GPT gera uma resposta e evita duplicar um request_id.
 - Acompanha `AGENTS.md`, `docs/TASKS.md`, `docs/STATE.md`.
-- **Modo Seguro** ativo por padrão: até 4 novas solicitações por hora, 24 em 24 horas, no mínimo 12 minutos entre tentativas, 90 segundos de inatividade do usuário.
+- **Modo Seguro** ativo por padrão: até 5 novas solicitações por hora, 120 em 24 horas, no mínimo 12 minutos entre tentativas, 90 segundos de inatividade do usuário.
 - **Pausas de descanso** opcionais: curtas e ocasionais longas, com duração dentro de intervalos configuráveis.
 - Inspeções periódicas entre 10 e 20 minutos, sem atrasar arbitrariamente um checkpoint pronto (os limites de uso continuam valendo).
 - **HUD Tkinter** leve, sem servidor web: próximo check, limites e pausas, estado, progresso, tarefas, último commit e testes.
