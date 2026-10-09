@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [long]$WindowHandle,
     [string]$RequestId = '',
+    [string]$ExpectedConversationUrl = '',
     [switch]$InvokeSend
 )
 
@@ -17,18 +18,28 @@ $editCond = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.ControlType]::Edit
 )
 $editControls = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCond)
-$matches = @()
+$composerMatches = @()
+$conversationUrl = ''
 foreach ($control in $editControls) {
     $name = $control.Current.Name
+    if ($name -in @('Address and search bar', 'Barra de endereço e pesquisa')) {
+        $addressPattern = $null
+        if ($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$addressPattern)) {
+            $candidate = [string]$addressPattern.Current.Value
+            if ($candidate -match '^https://(?:www\.)?chatgpt\.com/(?:[^?#]*/)?c/[0-9a-f-]+(?:[?#].*)?$') {
+                $conversationUrl = ([uri]$candidate).GetLeftPart([System.UriPartial]::Path).TrimEnd('/')
+            }
+        }
+    }
     if ($name -in @('Pergunte ao ChatGPT', 'Ask anything', 'Message ChatGPT')) {
-        $matches += $control
+        $composerMatches += $control
     }
 }
-if ($matches.Count -ne 1) {
-    throw "Expected exactly one ChatGPT composer; found $($matches.Count)"
+if ($composerMatches.Count -ne 1) {
+    throw "Expected exactly one ChatGPT composer; found $($composerMatches.Count)"
 }
 
-$composer = $matches[0]
+$composer = $composerMatches[0]
 $e = $composer.Current
 $b = $e.BoundingRectangle
 if ($b.IsEmpty -or $b.Width -lt 100 -or $b.Height -lt 20) {
@@ -67,6 +78,9 @@ foreach ($button in $buttons) {
 $generating = $stopButtons.Count -gt 0
 $sent = $false
 if ($InvokeSend) {
+    if ($ExpectedConversationUrl -and $conversationUrl -ne $ExpectedConversationUrl) {
+        throw 'ChatGPT conversation address changed. Refusing to send.'
+    }
     if (-not $RequestId -or -not $hasRequestId) {
         throw 'Requested id is missing from the composer. Refusing to click.'
     }
@@ -85,6 +99,7 @@ if ($InvokeSend) {
     width = [math]::Round($b.Width)
     height = [math]::Round($b.Height)
     name = $e.Name
+    conversation_url = $conversationUrl
     text_length = $effectiveLength
     request_id_present = [bool]$hasRequestId
     generating = [bool]$generating

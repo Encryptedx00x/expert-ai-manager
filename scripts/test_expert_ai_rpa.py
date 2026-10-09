@@ -16,7 +16,8 @@ class ProtocolTests(unittest.TestCase):
         self.pending = ["APP-070"]
 
     def test_ready_with_idle_pc_sends(self):
-        self.assertEqual(rpa.decision({"status": "ready"}, self.config, self.pending, 5.1, 200, False), "send")
+        with patch.object(rpa, "read_json", return_value=rpa.new_ledger()):
+            self.assertEqual(rpa.decision({"status": "ready"}, self.config, self.pending, 5.1, 200, False), "send")
 
     def test_blocks_if_user_is_active(self):
         result = rpa.decision({"status": "ready"}, self.config, self.pending, 5.1, 12, False)
@@ -106,39 +107,98 @@ class ProtocolTests(unittest.TestCase):
             "calibration required"
         )
 
-    def test_auto_calibration_accepts_a_different_project_chat_title(self):
+    def test_auto_calibration_accepts_renamed_chat_when_composer_verified(self):
         from types import SimpleNamespace
-
-        bounds = {
-            "x": 720, "y": 880, "width": 470, "height": 90,
-            "name": "Pergunte ao ChatGPT",
-        }
-        rect = SimpleNamespace(left=0, top=0, right=1920, bottom=1080)
-        with patch.object(rpa.U, "GetForegroundWindow", return_value=100), \
-             patch.object(rpa, "win_title", return_value="Projeto CRM - Personal - Microsoft Edge"), \
+        title = "Recuperar contexto do projeto - Personal - Microsoft Edge"
+        bounds = {"x": 650, "y": 910, "width": 500, "height": 40,
+                  "name": "Pergunte ao ChatGPT",
+                  "conversation_url": "https://chatgpt.com/c/a1b2c3"}
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
+             patch.object(rpa, "win_title", return_value=title), \
              patch.object(rpa, "process_name", return_value="msedge.exe"), \
-             patch.object(rpa, "composer_bounds", return_value=bounds), \
-             patch.object(rpa, "window_rect", return_value=rect), \
-             patch.object(rpa, "read_json", return_value={}), \
+             patch.object(rpa, "composer_bounds", return_value=bounds) as composer, \
+             patch.object(rpa, "window_rect", return_value=SimpleNamespace(
+                 left=0, top=0, right=1920, bottom=1080)), \
+             patch.object(rpa, "read_json", return_value=self.config), \
              patch.object(rpa, "write_json") as save:
             rpa.calibrate_auto()
+        composer.assert_called_once_with(24)
+        save.assert_called_once()
+        target, updated = save.call_args.args
+        self.assertEqual(target, rpa.CONFIG)
+        self.assertEqual(updated["window_title"], title)
+        self.assertEqual(updated["conversation_url"], "https://chatgpt.com/c/a1b2c3")
+        self.assertEqual(updated["process_name"], "msedge.exe")
+        self.assertTrue(updated["calibrated"])
 
-        saved = save.call_args.args[1]
-        self.assertTrue(saved["calibrated"])
-        self.assertEqual(saved["window_title"], "Projeto CRM - Personal - Microsoft Edge")
-        self.assertEqual(saved["process_name"], "msedge.exe")
+    def test_auto_calibration_refuses_non_chat_composer(self):
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
+             patch.object(rpa, "win_title", return_value="Other - Microsoft Edge"), \
+             patch.object(rpa, "process_name", return_value="msedge.exe"), \
+             patch.object(rpa, "composer_bounds", side_effect=RuntimeError("No ChatGPT composer")), \
+             patch.object(rpa, "write_json") as save:
+            with self.assertRaisesRegex(RuntimeError, "No ChatGPT composer"):
+                rpa.calibrate_auto()
+            save.assert_not_called()
 
-    def test_auto_calibration_rejects_an_unrecognized_composer(self):
-        with patch.object(rpa.U, "GetForegroundWindow", return_value=100), \
-             patch.object(rpa, "win_title", return_value="Some other app - Edge"), \
+    def test_title_change_matches_calibrated_conversation_url_only(self):
+        # The visible Edge title changes whenever ChatGPT renames the chat.
+        config = {**self.config, "process_name": "msedge.exe",
+                  "window_title": "Old chat title",
+                  "conversation_url": "https://chatgpt.com/c/a1b2c3"}
+        def enumerator(callback, _):
+            callback(11, 0)
+            callback(12, 0)
+        with patch.object(rpa.U, "EnumWindows", side_effect=enumerator), \
+             patch.object(rpa.U, "IsWindowVisible", return_value=True), \
+             patch.object(rpa, "win_title", side_effect=["Renamed chat", "Other chat"]), \
+             patch.object(rpa, "process_name", return_value="msedge.exe"), \
+             patch.object(rpa, "composer_bounds", side_effect=[
+                 {"conversation_url": "https://chatgpt.com/c/a1b2c3"},
+                 {"conversation_url": "https://chatgpt.com/c/different"},
+             ]):
+            self.assertEqual(rpa.matching_windows(config), [11])
+
+    def test_title_change_refuses_another_chat_or_ambiguous_match(self):
+        config = {**self.config, "process_name": "msedge.exe",
+                  "window_title": "Old chat title",
+                  "conversation_url": "https://chatgpt.com/c/a1b2c3"}
+        def enumerator(callback, _):
+            callback(11, 0)
+            callback(12, 0)
+        with patch.object(rpa.U, "EnumWindows", side_effect=enumerator), \
+             patch.object(rpa.U, "IsWindowVisible", return_value=True), \
+             patch.object(rpa, "win_title", return_value="Other chat"), \
              patch.object(rpa, "process_name", return_value="msedge.exe"), \
              patch.object(rpa, "composer_bounds", return_value={
-                 "x": 720, "y": 880, "width": 470, "height": 90,
-                 "name": "Some other website input",
+                 "conversation_url": "https://chatgpt.com/c/different",
+             }):
+            self.assertEqual(rpa.matching_windows(config), [])
+
+    def test_auto_calibration_rejects_browser_without_conversation_address(self):
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
+             patch.object(rpa, "win_title", return_value="New chat - Microsoft Edge"), \
+             patch.object(rpa, "process_name", return_value="msedge.exe"), \
+             patch.object(rpa, "composer_bounds", return_value={
+                 "width": 500, "height": 50, "name": "Pergunte ao ChatGPT"}), \
+             patch.object(rpa, "write_json") as save:
+            with self.assertRaisesRegex(RuntimeError, "conversation address"):
+                rpa.calibrate_auto()
+            save.assert_not_called()
+
+    def test_different_chat_never_creates_draft(self):
+        from types import SimpleNamespace
+        config = {**self.config, "conversation_url": "https://chatgpt.com/c/a1b2c3"}
+        with patch.object(rpa, "matching_windows", return_value=[12]), \
+             patch.object(rpa, "window_rect", return_value=SimpleNamespace(
+                 left=0, top=0, right=1920, bottom=1080)), \
+             patch.object(rpa, "composer_bounds", return_value={
+                 "conversation_url": "https://chatgpt.com/c/other",
+                 "x": 650, "y": 900, "width": 500, "height": 50,
              }), \
              patch.object(rpa, "write_json") as save:
-            with self.assertRaisesRegex(RuntimeError, "ChatGPT message composer"):
-                rpa.calibrate_auto()
+            with self.assertRaisesRegex(rpa.RpaDeferred, "another conversation"):
+                rpa.send_once(config, {"status": "ready"})
             save.assert_not_called()
 
     def test_monitor_write_retries_temporary_windows_file_lock(self):

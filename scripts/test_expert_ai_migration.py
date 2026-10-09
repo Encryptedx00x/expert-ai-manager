@@ -150,6 +150,40 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue(self.marker.exists())
         self.assertTrue(self.pause.exists())
 
+    def test_migration_requires_different_conversation_url_even_if_renamed(self):
+        old_url = "https://chatgpt.com/c/11111111-1111-4111-8111-111111111111"
+        new_url = "https://chatgpt.com/c/22222222-2222-4222-8222-222222222222"
+        control.atomic_save(
+            self.config, {**self.config_value, "conversation_url": old_url}
+        )
+        migration.prepare_migration()
+        control.atomic_save(
+            self.config,
+            {**self.config_value, "conversation_url": old_url,
+             "window_title": "Renamed Old Chat - Microsoft Edge"},
+        )
+        with self.assertRaisesRegex(RuntimeError, "novo endereço"):
+            migration.attach_migration("Renamed Old Chat - Microsoft Edge")
+        self.assertTrue(self.pause.exists())
+        control.atomic_save(
+            self.config, {**self.config_value, "conversation_url": new_url,
+                          "window_title": "New Chat - Microsoft Edge"}
+        )
+        migration.attach_migration("New Chat - Microsoft Edge")
+        control.atomic_save(self.state, {**self.state_value, "status": "ready"})
+        control.atomic_save(
+            self.config, {**self.config_value, "conversation_url": old_url,
+                          "window_title": "New Chat - Microsoft Edge"}
+        )
+        with self.assertRaisesRegex(RuntimeError, "Endereço"):
+            migration.finish_migration()
+        self.assertTrue(self.pause.exists())
+        control.atomic_save(
+            self.config, {**self.config_value, "conversation_url": new_url,
+                          "window_title": "New Chat - Microsoft Edge"}
+        )
+        self.assertEqual(migration.finish_migration()["phase"], "finished")
+
     def test_limit_hold_blocks_resume_of_migration(self):
         migration.prepare_migration()
         control.atomic_save(
@@ -171,8 +205,9 @@ class MigrationTests(unittest.TestCase):
     def test_migrate_attach_does_not_send_and_still_requires_ready(self):
         migration.prepare_migration()
 
-        def fake_calibration(*, migration_title):
+        def fake_calibration(*, migration_title, migration_url):
             self.assertEqual(migration_title, "Old Chat - Microsoft Edge")
+            self.assertEqual(migration_url, "")
             control.atomic_save(
                 self.config, {**self.config_value,
                               "window_title": "New Chat - Microsoft Edge"}

@@ -227,19 +227,32 @@ def process_name(hwnd: int) -> str:
 
 
 def matching_windows(config: dict) -> list[int]:
+    """Match the ChatGPT conversation URL; browser tab titles are mutable."""
     windows: list[int] = []
+    conversation_url = config.get("conversation_url")
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     @callback_type
     def visit(hwnd, _):
         if U.IsWindowVisible(hwnd):
             title = win_title(hwnd)
-            if title and config["window_title"].casefold() in title.casefold():
+            if title and (conversation_url or config["window_title"].casefold() in title.casefold()):
                 windows.append(hwnd)
         return True
 
     U.EnumWindows(visit, 0)
-    return [w for w in windows if process_name(w) == config["process_name"].lower()]
+    eligible = [w for w in windows if process_name(w) == config["process_name"].lower()]
+    if not conversation_url:
+        return eligible
+
+    matched = []
+    for hwnd in eligible:
+        try:
+            if composer_bounds(hwnd).get("conversation_url") == conversation_url:
+                matched.append(hwnd)
+        except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired):
+            continue
+    return matched
 
 
 def free_ram_gib() -> float:
@@ -309,7 +322,8 @@ def composer_bounds(hwnd: int) -> dict:
     return bounds
 
 
-def calibrate_auto(*, migration_title: str | None = None) -> None:
+def calibrate_auto(*, migration_title: str | None = None,
+                   migration_url: str | None = None) -> None:
     """Bind to the foreground ChatGPT composer; optionally guard a chat migration."""
     if MIGRATION.exists() and migration_title is None:
         raise RuntimeError("Troca de conversa em andamento: use migrate-attach.")
@@ -327,6 +341,10 @@ def calibrate_auto(*, migration_title: str | None = None) -> None:
     bounds = composer_bounds(hwnd)
     if bounds.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
         raise RuntimeError("Expected the accessible ChatGPT message composer")
+    if exe == "msedge.exe" and not bounds.get("conversation_url"):
+        raise RuntimeError("Cannot verify ChatGPT conversation address; calibration refused")
+    if migration_url and bounds.get("conversation_url") == migration_url:
+        raise RuntimeError("A nova janela ainda aponta para a conversa anterior.")
     rect = window_rect(hwnd)
     width, height = rect.right - rect.left, rect.bottom - rect.top
     rx = (bounds["x"] + bounds["width"]/2 - rect.left) / width
@@ -335,6 +353,7 @@ def calibrate_auto(*, migration_title: str | None = None) -> None:
         raise RuntimeError("Composer does not fit the expected window area")
     config = {**DEFAULTS, **read_json(CONFIG)}
     config.update({"window_title": title, "process_name": exe,
+                   "conversation_url": bounds.get("conversation_url", ""),
                    "composer_ratio_x": round(rx, 5), "composer_ratio_y": round(ry, 5),
                    "calibrated": True})
     write_json(CONFIG, config)
@@ -353,7 +372,8 @@ def migrate_attach() -> None:
         raise RuntimeError("Há um rascunho pendente; resolva antes de trocar de chat.")
     print("Abra o NOVO chat no Edge e deixe-o em primeiro plano. Captura em 6 segundos...")
     time.sleep(6)
-    calibrate_auto(migration_title=handoff.get("previous_window_title", ""))
+    calibrate_auto(migration_title=handoff.get("previous_window_title", ""),
+                   migration_url=handoff.get("previous_conversation_url", ""))
     current = read_json(CONFIG)
     attach_migration(current["window_title"])
     print("Nova conversa anexada, supervisor AINDA PAUSADO.")
@@ -377,6 +397,8 @@ def calibrate() -> None:
     view = composer_bounds(hwnd)
     if view.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
         raise RuntimeError("Expected the accessible ChatGPT message composer")
+    if exe == "msedge.exe" and not view.get("conversation_url"):
+        raise RuntimeError("Cannot verify ChatGPT conversation address; calibration refused")
     rect = window_rect(hwnd)
     point = POINT()
     U.GetCursorPos(ctypes.byref(point))
@@ -387,6 +409,7 @@ def calibrate() -> None:
         raise RuntimeError("Mouse must be within the lower area of a normal ChatGPT window")
     config = {**DEFAULTS, **read_json(CONFIG)}
     config.update({"window_title": title, "process_name": exe,
+                   "conversation_url": view.get("conversation_url", ""),
                    "composer_ratio_x": round(rx, 5), "composer_ratio_y": round(ry, 5),
                    "calibrated": True})
     write_json(CONFIG, config)
@@ -477,6 +500,8 @@ def submit_pending_send(config: dict, state: dict) -> str:
     if U.GetForegroundWindow() != hwnd:
         raise RpaDeferred("Another window still has focus")
     view = composer_bounds(hwnd)
+    if config.get("conversation_url") and view.get("conversation_url") != config["conversation_url"]:
+        raise RpaDeferred("ChatGPT switched to another conversation")
     if view.get("generating"):
         raise RpaDeferred("ChatGPT is still generating")
     if not view.get("request_id_present"):
@@ -497,7 +522,9 @@ def submit_pending_send(config: dict, state: dict) -> str:
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
          "Bypass", "-File", str(script), "-WindowHandle", str(hwnd),
-         "-RequestId", request_id, "-InvokeSend"],
+         "-RequestId", request_id,
+         "-ExpectedConversationUrl", config.get("conversation_url", ""),
+         "-InvokeSend"],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=15,
     )
@@ -529,6 +556,8 @@ def send_once(config: dict, state: dict) -> None:
     if rect.right - rect.left < 550 or rect.bottom - rect.top < 350:
         raise RpaDeferred("ChatGPT window too small")
     bounds = composer_bounds(hwnd)
+    if config.get("conversation_url") and bounds.get("conversation_url") != config["conversation_url"]:
+        raise RpaDeferred("ChatGPT switched to another conversation")
     if bounds.get("generating"):
         raise RpaDeferred("ChatGPT is generating")
     if bounds.get("text_length", 0) > 0:
@@ -550,6 +579,8 @@ def send_once(config: dict, state: dict) -> None:
     cursor = POINT()
     U.GetCursorPos(ctypes.byref(cursor))
     try:
+        if config.get("conversation_url") and composer_bounds(hwnd).get("conversation_url") != config["conversation_url"]:
+            raise RpaDeferred("ChatGPT switched conversations before typing")
         click_at(x, y)
         if U.GetForegroundWindow() != hwnd:
             raise RpaDeferred("Popup stole focus before typing")

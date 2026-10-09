@@ -43,6 +43,7 @@ def prepare_migration() -> dict:
         "phase": "awaiting_new_chat",
         "created_at": utc_now(),
         "previous_window_title": config.get("window_title", ""),
+        "previous_conversation_url": config.get("conversation_url", ""),
         "previously_paused": was_paused,
         "request_id": state.get("request_id", ""),
         "round": state.get("round", 0),
@@ -107,7 +108,11 @@ def attach_migration(new_title: str) -> dict:
     config = load(CONFIG)
     if not config.get("calibrated") or config.get("window_title") != new_title:
         raise RuntimeError("A nova conversa ainda não foi calibrada.")
-    handoff.update(phase="attached", new_window_title=new_title, attached_at=utc_now())
+    old_url, new_url = handoff.get("previous_conversation_url"), config.get("conversation_url")
+    if old_url and (not new_url or new_url == old_url):
+        raise RuntimeError("A conversa vinculada precisa de um novo endereço confirmado.")
+    handoff.update(phase="attached", new_window_title=new_title,
+                   new_conversation_url=new_url or "", attached_at=utc_now())
     atomic_save(MIGRATION, handoff)
     return handoff
 
@@ -128,6 +133,8 @@ def finish_migration() -> dict:
     cfg = load(CONFIG)
     if not cfg.get("calibrated") or cfg.get("window_title") != handoff.get("new_window_title"):
         raise RuntimeError("Calibração mudou após o anexo; inspecione a conversa.")
+    if cfg.get("conversation_url", "") != handoff.get("new_conversation_url", ""):
+        raise RuntimeError("Endereço da conversa mudou após a migração.")
     # Only an explicitly completed handoff starts a fresh conversation estimate.
     start_session(state.get("round", 0), cfg["window_title"], known_new=True,
                   path=MIGRATION.with_name("conversation-session.json"))
