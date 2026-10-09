@@ -1,0 +1,22 @@
+# Local runtime, preferences, message drafts, and usage data
+.dev-loop/
+.qa-project/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup-*
+.DS_Store
+Thumbs.db
+node_modules/
+.next/
+dist/
+build/
+coverage/
