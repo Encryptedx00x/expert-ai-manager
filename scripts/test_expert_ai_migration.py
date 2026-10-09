@@ -28,6 +28,7 @@ class MigrationTests(unittest.TestCase):
         self.config_value = {
             **control.read_settings(),
             "window_title": "Old Chat - Microsoft Edge",
+            "conversation_url": "",  # Isolate fixture from live project calibration.
             "calibrated": True,
         }
         control.atomic_save(self.state, self.state_value)
