@@ -141,6 +141,24 @@ class ProtocolTests(unittest.TestCase):
                 rpa.calibrate_auto()
             save.assert_not_called()
 
+    def test_monitor_write_retries_temporary_windows_file_lock(self):
+        with patch.object(rpa, "write_json",
+                          side_effect=[PermissionError(5, "Access denied"), None]) as save, \
+             patch.object(rpa.time, "sleep") as sleep:
+            rpa.write_monitor({"action": "user active"})
+            self.assertEqual(save.call_count, 2)
+            sleep.assert_called_once()
+
+    def test_monitor_write_failure_is_nonfatal_and_does_not_touch_checkpoint(self):
+        with patch.object(rpa, "write_json",
+                          side_effect=PermissionError(5, "Access denied")) as save, \
+             patch.object(rpa.time, "sleep"), \
+             patch.object(rpa.logging, "warning") as warning:
+            rpa.write_monitor({"action": "user active"})
+            self.assertEqual(save.call_count, 5)
+            self.assertTrue(all(call.args[0] == rpa.MONITOR for call in save.call_args_list))
+            warning.assert_called_once()
+
     def test_random_periodic_check_stays_between_ten_and_twenty_minutes(self):
         config = {**self.config, "min_periodic_minutes": 10, "max_periodic_minutes": 20}
         samples = [10.0, 15.0, 18.25, 20.0]

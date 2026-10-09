@@ -163,6 +163,19 @@ def write_json(path: Path, value: dict) -> None:
         temp.unlink(missing_ok=True)
 
 
+def write_monitor(value: dict) -> None:
+    """Best-effort HUD telemetry: never stop development over a temporary file lock."""
+    for attempt in range(5):
+        try:
+            write_json(MONITOR, value)
+            return
+        except PermissionError as exc:
+            if attempt == 4:
+                logging.warning("HUD monitor file busy; continuing supervisor: %s", exc)
+                return
+            time.sleep(0.05 * (attempt + 1))
+
+
 def parse_time(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -623,9 +636,9 @@ def wait_for_change(state: dict, config: dict, timeout_seconds: float,
     while time.monotonic() < until:
         time.sleep(min(5.0, max(0.1, until - time.monotonic())))
         if monitor is not None:
-            write_json(MONITOR, {**monitor, "updated_at": now(),
-                                 "paused": PAUSE.exists(),
-                                 "platform_limit_hold": LIMIT.exists()})
+            write_monitor({**monitor, "updated_at": now(),
+                           "paused": PAUSE.exists(),
+                           "platform_limit_hold": LIMIT.exists()})
         next_state = read_json(STATE)
         next_status = (next_state.get("status"), next_state.get("request_id"),
                        next_state.get("round"))
@@ -726,7 +739,7 @@ def run(once: bool = False, dry_run: bool = False) -> None:
                 "safe_mode_enabled": config["safe_mode_enabled"],
                 "breaks_enabled": config["breaks_enabled"],
             }
-            write_json(MONITOR, monitor)
+            write_monitor(monitor)
             wake_reason = wait_for_change(state, config, next_check_seconds, monitor=monitor)
             if wake_reason == "GPT state changed":
                 logging.info("GPT checkpoint updated; checking next stage immediately")
