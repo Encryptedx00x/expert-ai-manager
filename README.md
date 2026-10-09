@@ -11,7 +11,7 @@ Ferramenta local de **supervisão de desenvolvimento por etapas com ChatGPT**, P
 - **Modo Seguro** ativo por padrão: até 5 novas solicitações por hora, 120 em 24 horas, no mínimo 12 minutos entre tentativas, 90 segundos de inatividade do usuário.
 - **Pausas de descanso** opcionais: curtas e ocasionais longas, com duração dentro de intervalos configuráveis.
 - Inspeções periódicas entre 10 e 20 minutos, sem atrasar arbitrariamente um checkpoint pronto (os limites de uso continuam valendo).
-- **HUD Tkinter** leve, sem servidor web: próximo check, limites e pausas, estado, progresso, tarefas, último commit e testes.
+- **HUD Tkinter** leve, sem servidor web: estados e progresso em linguagem clara, contador visual de inatividade até 90 segundos (reinicia com mouse/teclado), pausas, tarefas, commit e testes. As checagens técnicas de 10 segundos ficam ocultas no painel.
 - Reutilizável em qualquer projeto que tenha um diretório de trabalho e uma conversa própria.
 
 ## Início rápido (Windows)

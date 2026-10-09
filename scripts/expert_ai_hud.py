@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from expert_ai_control import RUNTIME, command, load, atomic_save, SETTABLE
-from expert_ai_hud_data import progress_snapshot
+from expert_ai_hud_data import progress_snapshot, timing_view
 
 SETTINGS = RUNTIME / "hud-preferences.json"
 REFRESH_MS = 1500
@@ -97,10 +97,17 @@ class HUD:
                   foreground=ACCENT).pack(anchor="w", pady=2)
         for label, key in (
             ("Situação", "decision"), ("Rodada", "round"),
-            ("Próx. verificação", "check"),
+            ("Acompanhamento", "check"),
             ("Próx. solicitação", "pacing"), ("Uso recente", "usage")):
             self.value_row(tab, label, key)
+        self.idle_frame = ttk.Frame(tab)
+        self.idle_progress = ttk.Progressbar(self.idle_frame, mode="determinate", maximum=100)
+        self.idle_progress.pack(fill="x", pady=(0, 4))
+        self.idle_note = ttk.Label(self.idle_frame, text="A contagem reinicia quando você volta a usar o PC.",
+                                   foreground=MUTED, wraplength=365)
+        self.idle_note.pack(anchor="w")
         bar = ttk.Frame(tab)
+        self.action_bar = bar
         bar.pack(fill="x", pady=(8, 4))
         ttk.Button(bar, text="Pausar", command=lambda: self.action("pause")).pack(side="left", padx=(0, 6))
         ttk.Button(bar, text="Retomar", command=lambda: self.action("resume")).pack(side="left", padx=(0, 6))
@@ -232,13 +239,17 @@ class HUD:
             paused = data["paused"]
             color = "#b34b2e" if paused or data["limit_hold"] or state == "blocked" else ACCENT
             self.vars["status"].set(("PAUSADO · " if paused else "") + state.upper())
-            self.vars["decision"].set(
-                ("Supervisor ativo · " if data["supervisor_live"] else "Supervisor não confirmado · ")
-                + short(data["supervisor_action"], 50)
-            )
+            timing = timing_view(data)
+            self.vars["decision"].set(timing["decision"])
             self.vars["round"].set(f'{data["round"]} · ID {short(data["request_id"], 15)}')
-            self.vars["check"].set(hms(data["next_check_seconds"]) +
-                (f' ({data["next_check_kind"]})' if data["supervisor_live"] else ""))
+            self.vars["check"].set(timing["check"])
+            if timing["idle_visible"]:
+                self.idle_progress["value"] = timing["idle_percent"]
+                self.idle_note.configure(text=timing["idle_hint"])
+                if not self.idle_frame.winfo_manager():
+                    self.idle_frame.pack(before=self.action_bar, fill="x", pady=(2, 6))
+            elif self.idle_frame.winfo_manager():
+                self.idle_frame.pack_forget()
             self.vars["pacing"].set(
                 "Pode enviar" if data["pacing_seconds"] in (None, 0)
                 else f'{hms(data["pacing_seconds"])} · {data["pacing_reason"]}'

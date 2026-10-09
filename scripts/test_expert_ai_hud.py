@@ -59,6 +59,59 @@ class HudTests(unittest.TestCase):
                 control.set_option("breaks_enabled", False)
                 self.assertFalse(control.load(target)["breaks_enabled"])
 
+    def test_idle_readout_counts_up_without_exposing_ten_second_poll(self):
+        sample = {
+            "paused": False, "limit_hold": False, "supervisor_live": True,
+            "state": "ready", "idle_seconds": 34.8, "idle_required_seconds": 90,
+            "next_check_seconds": 3, "next_check_kind": "interactive",
+            "pacing_seconds": None,
+        }
+        view = data.timing_view(sample)
+        self.assertEqual(view["decision"], "Aguardando você terminar")
+        self.assertEqual(view["check"], "Sem usar o PC: 00:34 de 01:30")
+        self.assertTrue(view["idle_visible"])
+        self.assertAlmostEqual(view["idle_percent"], 34.8 / 90 * 100)
+        self.assertNotIn("3s", view["check"])
+
+    def test_idle_timer_resets_when_user_moves(self):
+        original = {
+            "paused": False, "limit_hold": False, "supervisor_live": True,
+            "state": "ready", "idle_seconds": 82, "idle_required_seconds": 90,
+            "next_check_seconds": 1, "next_check_kind": "interactive",
+            "pacing_seconds": None,
+        }
+        before = data.timing_view(original)
+        after = data.timing_view({**original, "idle_seconds": 1})
+        self.assertGreater(before["idle_percent"], after["idle_percent"])
+        self.assertEqual(after["check"], "Sem usar o PC: 00:01 de 01:30")
+
+    def test_no_fake_idle_timer_during_running_or_pause(self):
+        base = {
+            "paused": False, "limit_hold": False, "supervisor_live": True,
+            "state": "running", "idle_seconds": 5, "idle_required_seconds": 90,
+            "next_check_seconds": 8, "next_check_kind": "interactive",
+            "pacing_seconds": None,
+        }
+        self.assertFalse(data.timing_view(base)["idle_visible"])
+        self.assertNotIn("8s", data.timing_view(base)["check"])
+        paused = data.timing_view({**base, "paused": True, "state": "ready"})
+        self.assertEqual(paused["decision"], "Supervisor pausado")
+        self.assertFalse(paused["idle_visible"])
+
+    def test_shows_real_periodic_check_and_hides_technical_interactive_poll(self):
+        base = {
+            "paused": False, "limit_hold": False, "supervisor_live": True,
+            "state": "running", "idle_seconds": 120, "idle_required_seconds": 90,
+            "next_check_seconds": 780, "next_check_kind": "periodic",
+            "pacing_seconds": None,
+        }
+        self.assertIn("13m", data.timing_view(base)["check"])
+        hidden = data.timing_view({**base, "next_check_seconds": 10, "next_check_kind": "interactive"})
+        self.assertNotIn("10s", hidden["check"])
+        self.assertIn("segundo plano", hidden["check"])
+        ready = data.timing_view({**base, "state": "ready"})
+        self.assertIn("13m", ready["check"])
+
     def test_invalid_settings_are_not_written(self):
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder) / "config.json"
