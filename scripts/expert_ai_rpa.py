@@ -330,8 +330,8 @@ def calibrate_auto(*, migration_title: str | None = None,
     hwnd = U.GetForegroundWindow()
     title = win_title(hwnd)
     exe = process_name(hwnd)
-    if exe not in ("msedge.exe", "chatgpt.exe"):
-        raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/ChatGPT")
+    if exe not in ("msedge.exe", "brave.exe", "chatgpt.exe"):
+        raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/Brave/ChatGPT")
     if not title.strip():
         raise RuntimeError("The selected ChatGPT window must have a title")
     if migration_title is not None and title.casefold() == migration_title.casefold():
@@ -339,9 +339,9 @@ def calibrate_auto(*, migration_title: str | None = None,
     # Identify the live ChatGPT composer by its accessible name instead of
     # assuming every project conversation has the same browser window title.
     bounds = composer_bounds(hwnd)
-    if bounds.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
+    if bounds.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Ask ChatGPT", "Message ChatGPT"):
         raise RuntimeError("Expected the accessible ChatGPT message composer")
-    if exe == "msedge.exe" and not bounds.get("conversation_url"):
+    if exe in ("msedge.exe", "brave.exe") and not bounds.get("conversation_url"):
         raise RuntimeError("Cannot verify ChatGPT conversation address; calibration refused")
     if migration_url and bounds.get("conversation_url") == migration_url:
         raise RuntimeError("A nova janela ainda aponta para a conversa anterior.")
@@ -370,7 +370,7 @@ def migrate_attach() -> None:
         raise RuntimeError("Prepare a troca e confirme a pausa antes de anexar.")
     if read_json(STATE).get("status") == "pending_send":
         raise RuntimeError("Há um rascunho pendente; resolva antes de trocar de chat.")
-    print("Abra o NOVO chat no Edge e deixe-o em primeiro plano. Captura em 6 segundos...")
+    print("Abra o NOVO chat no Edge ou Brave em primeiro plano. Captura em 6 segundos...")
     time.sleep(6)
     calibrate_auto(migration_title=handoff.get("previous_window_title", ""),
                    migration_url=handoff.get("previous_conversation_url", ""))
@@ -390,14 +390,14 @@ def calibrate() -> None:
     hwnd = U.GetForegroundWindow()
     title = win_title(hwnd)
     exe = process_name(hwnd)
-    if exe not in ("msedge.exe", "chatgpt.exe"):
-        raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/ChatGPT")
+    if exe not in ("msedge.exe", "brave.exe", "chatgpt.exe"):
+        raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/Brave/ChatGPT")
     if not title.strip():
         raise RuntimeError("The selected window has no title")
     view = composer_bounds(hwnd)
-    if view.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Message ChatGPT"):
+    if view.get("name") not in ("Pergunte ao ChatGPT", "Ask anything", "Ask ChatGPT", "Message ChatGPT"):
         raise RuntimeError("Expected the accessible ChatGPT message composer")
-    if exe == "msedge.exe" and not view.get("conversation_url"):
+    if exe in ("msedge.exe", "brave.exe") and not view.get("conversation_url"):
         raise RuntimeError("Cannot verify ChatGPT conversation address; calibration refused")
     rect = window_rect(hwnd)
     point = POINT()

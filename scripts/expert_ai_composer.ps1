@@ -26,12 +26,14 @@ foreach ($control in $editControls) {
         $addressPattern = $null
         if ($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$addressPattern)) {
             $candidate = [string]$addressPattern.Current.Value
+            # Brave's omnibox omits the https:// prefix, unlike Edge.
+            if ($candidate -match '^(?:www\.)?chatgpt\.com/') { $candidate = 'https://' + $candidate }
             if ($candidate -match '^https://(?:www\.)?chatgpt\.com/(?:[^?#]*/)?c/[0-9a-f-]+(?:[?#].*)?$') {
                 $conversationUrl = ([uri]$candidate).GetLeftPart([System.UriPartial]::Path).TrimEnd('/')
             }
         }
     }
-    if ($name -in @('Pergunte ao ChatGPT', 'Ask anything', 'Message ChatGPT')) {
+    if ($name -in @('Pergunte ao ChatGPT', 'Ask anything', 'Ask ChatGPT', 'Message ChatGPT')) {
         $composerMatches += $control
     }
 }
@@ -54,7 +56,7 @@ if ($composer.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pat
 $hasRequestId = (-not $RequestId) -or $editorText.Contains($RequestId)
 # UI Automation may return the placeholder as the Edit.Value even when empty.
 $normalizedText = $editorText.Trim()
-$placeholders = @('Pergunte ao ChatGPT', 'Ask anything', 'Message ChatGPT')
+$placeholders = @('Pergunte ao ChatGPT', 'Ask anything', 'Ask ChatGPT', 'Message ChatGPT')
 $effectiveLength = if ($normalizedText -in $placeholders) { 0 } else { $editorText.Length }
 
 $buttonCond = New-Object System.Windows.Automation.PropertyCondition(

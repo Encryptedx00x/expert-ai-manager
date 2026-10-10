@@ -29,7 +29,7 @@ O projeto Óliver's Burger foi apenas o piloto. O script pode ser instalado em q
 
 ## Instalação rápida (Windows)
 
-Pré-requisitos: Python 3.11+, Windows, Edge, Git e Remote Desktop Commander conectado ao ChatGPT. Para usar outro projeto, primeiro **pare o supervisor do projeto anterior**. Se preferir não digitar comandos para instalar, dê dois cliques em **`Instalar em outro projeto.cmd`** nesta pasta e informe caminho, nome e prefixo.
+Pré-requisitos: Python 3.11+, Windows, Edge ou Brave, Git e Remote Desktop Commander conectado ao ChatGPT. Para usar outro projeto, primeiro **pare o supervisor do projeto anterior**. Se preferir não digitar comandos para instalar, dê dois cliques em **`Instalar em outro projeto.cmd`** nesta pasta e informe caminho, nome e prefixo.
 
 ```powershell
 New-Item -ItemType Directory -Force -Path "C:\Projetos\MeuProjeto" | Out-Null
@@ -37,7 +37,7 @@ cd "$env:USERPROFILE\Desktop\Expert AI Manager"
 py -3 -B install.py --project "C:\Projetos\MeuProjeto" --name "Meu Projeto" --prefix APP
 ```
 
-Agora **abra no projeto** `docs/expert-ai-manager/COMECE_AQUI.md` e copie o **Prompt A** de `docs/expert-ai-manager/PROMPTS_PRONTOS.md` para uma conversa nova. Após o planejamento e a revisão, abra essa conversa no Edge em primeiro plano:
+Agora **abra no projeto** `docs/expert-ai-manager/COMECE_AQUI.md` e copie o **Prompt A** de `docs/expert-ai-manager/PROMPTS_PRONTOS.md` para uma conversa nova. Após o planejamento e a revisão, abra essa conversa no Edge ou Brave em primeiro plano:
 
 ```powershell
 cd "C:\Projetos\MeuProjeto"

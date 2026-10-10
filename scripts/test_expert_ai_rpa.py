@@ -131,6 +131,53 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(updated["process_name"], "msedge.exe")
         self.assertTrue(updated["calibrated"])
 
+    def test_auto_calibration_accepts_brave_with_exact_chat_url(self):
+        from types import SimpleNamespace
+        url = "https://chatgpt.com/c/6ac9711e-dd44-83e8-86ed-7e13b4546a02"
+        bounds = {"x": 1374, "y": 963, "width": 348, "height": 36,
+                  "name": "Ask ChatGPT", "conversation_url": url}
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
+             patch.object(rpa, "win_title", return_value="Project chat - Brave"), \
+             patch.object(rpa, "process_name", return_value="brave.exe"), \
+             patch.object(rpa, "composer_bounds", return_value=bounds), \
+             patch.object(rpa, "window_rect", return_value=SimpleNamespace(
+                 left=961, top=0, right=1919, bottom=1031)), \
+             patch.object(rpa, "read_json", return_value=self.config), \
+             patch.object(rpa, "write_json") as save, \
+             patch.object(rpa, "initialize_if_missing"):
+            rpa.calibrate_auto()
+        updated = save.call_args.args[1]
+        self.assertEqual(updated["conversation_url"], url)
+        self.assertEqual(updated["process_name"], "brave.exe")
+        self.assertTrue(updated["calibrated"])
+
+    def test_auto_calibration_refuses_brave_without_chat_url(self):
+        with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
+             patch.object(rpa, "win_title", return_value="Project chat - Brave"), \
+             patch.object(rpa, "process_name", return_value="brave.exe"), \
+             patch.object(rpa, "composer_bounds", return_value={
+                 "name": "Ask ChatGPT", "conversation_url": ""}), \
+             patch.object(rpa, "write_json") as save:
+            with self.assertRaisesRegex(RuntimeError, "conversation address"):
+                rpa.calibrate_auto()
+            save.assert_not_called()
+
+    def test_brave_requires_exact_conversation_url_for_window_matching(self):
+        config = {**self.config, "process_name": "brave.exe",
+                  "conversation_url": "https://chatgpt.com/c/current"}
+        def enumerate_windows(callback, _):
+            callback(11, 0)
+            callback(12, 0)
+        with patch.object(rpa.U, "EnumWindows", side_effect=enumerate_windows), \
+             patch.object(rpa.U, "IsWindowVisible", return_value=True), \
+             patch.object(rpa, "win_title", return_value="Brave"), \
+             patch.object(rpa, "process_name", return_value="brave.exe"), \
+             patch.object(rpa, "composer_bounds", side_effect=[
+                 {"conversation_url": "https://chatgpt.com/c/other"},
+                 {"conversation_url": "https://chatgpt.com/c/current"},
+             ]):
+            self.assertEqual(rpa.matching_windows(config), [12])
+
     def test_auto_calibration_refuses_non_chat_composer(self):
         with patch.object(rpa.U, "GetForegroundWindow", return_value=24), \
              patch.object(rpa, "win_title", return_value="Other - Microsoft Edge"), \

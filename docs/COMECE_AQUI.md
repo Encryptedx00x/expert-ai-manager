@@ -6,7 +6,7 @@ O Expert AI Manager **não é uma IA nem um plugin do ChatGPT**. É um conjunto 
 
 ## Passo 0. Antes de iniciar
 
-- Windows 10/11, Python 3.11+ com Tkinter, Git e Microsoft Edge.
+- Windows 10/11, Python 3.11+ com Tkinter, Git e Microsoft Edge ou Brave.
 - Acesso aos arquivos/terminal do PC via Remote Desktop Commander, conectado ao ChatGPT.
 - Uma pasta exclusiva e **uma conversa exclusiva** para o novo projeto.
 - **Feche ou pare primeiro o supervisor de outro projeto.** No Óliver's, por exemplo, use o botão **Pausar** no HUD e encerre o processo Python do supervisor pelo terminal que o iniciou (Ctrl+C). Pausar sozinho impede envios, mas não encerra o processo. É possível manter outros HUDs abertos; não inicie dois supervisores usando a mesma janela/conversa.
@@ -84,7 +84,7 @@ Confira:
 
 ## Passo 6. Calibrar a conversa correta (sem enviar mensagem)
 
-Na conversa **Dev CRM**, abra o ChatGPT pelo Edge e deixe essa janela **em primeiro plano**. Em seguida, no terminal:
+Na conversa **Dev CRM**, abra o ChatGPT pelo Edge ou Brave e deixe essa janela **em primeiro plano**. Em seguida, no terminal:
 
 ```powershell
 cd "C:\Projetos\MeuCRM"
@@ -94,7 +94,7 @@ py -3 -B scripts\expert_ai_rpa.py status
 
 A calibração automática verifica o campo acessível de mensagem do ChatGPT e grava a identificação da janela. **Não envia nenhuma mensagem.** Confirme `calibrated: true` e que o título da janela corresponde à conversa certa. Se não identificar, **não force envios**: revise o navegador/aba e a versão do seletor.
 
-**Importante:** o supervisor depende do Edge/ChatGPT compatível, da janela calibrada e de sua interface atual. Para outra conversa/projeto, faça nova calibração; não copie `.dev-loop/` do projeto anterior.
+**Importante:** o supervisor depende do Edge ou Brave com ChatGPT compatível, da janela calibrada e de sua interface atual. Para outra conversa/projeto, faça nova calibração; não copie `.dev-loop/` do projeto anterior.
 
 ## Passo 7. Abrir o HUD e iniciar o supervisor
 
@@ -143,7 +143,7 @@ py -3 -B scripts\expert_ai_hud.py --snapshot
 
 | Sintoma | O que verificar |
 |---|---|
-| `calibration required` | Abra a conversa correta no Edge e rode `calibrate-auto` |
+| `calibration required` | Abra a conversa correta no Edge ou Brave e rode `calibrate-auto` |
 | Nenhuma tarefa aparece | Prefixo `CRM-` em `TASKS.md`; `task_prefix` da configuração |
 | HUD mostra pausa | Confira PAUSE e o botão Retomar, depois o estado JSON |
 | Conta 90 segundos e reinicia | É atividade do usuário; não é um ciclo de mensagens |

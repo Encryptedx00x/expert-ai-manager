@@ -26,7 +26,7 @@ Quando o ChatGPT indicar que uma conversa ficou longa demais, use **Expert AI Ma
 
 ## 2. Anexar a nova conversa
 
-Depois de abrir e identificar a nova conversa no Edge, inicie o comando abaixo **em um terminal do próprio projeto**:
+Depois de abrir e identificar a nova conversa no Edge ou Brave, inicie o comando abaixo **em um terminal do próprio projeto**:
 
 ```powershell
 py -3 -B scripts\expert_ai_rpa.py migrate-attach

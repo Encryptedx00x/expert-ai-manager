@@ -14,7 +14,7 @@ Uma aplicação local com cinco partes:
 - **Pacote reutilizável**: scripts, templates AGENTS/TASKS/STATE/ARCHITECTURE, exemplos de comandos, testes e prompt mestre.
 
 ### 2. Pré-requisitos
-1. Windows 10/11, Python 3.11 ou superior (com Tkinter e PowerShell), Git e navegador Edge. O projeto a desenvolver pode usar outras tecnologias, mas a automação atual foi calibrada para uma janela do ChatGPT no Edge.
+1. Windows 10/11, Python 3.11 ou superior (com Tkinter e PowerShell), Git e navegador Edge ou Brave. O projeto a desenvolver pode usar outras tecnologias, mas a automação exige calibrar a janela correta do ChatGPT no navegador escolhido.
 2. Uma pasta própria para o projeto e uma conversa dedicada ao projeto no ChatGPT.
 3. Plugins/skills que o projeto realmente precisar. O instalador NÃO instala plugins, não obtém permissões e não cria contas sozinho.
 4. Verificar os Termos de Uso e limites aplicáveis. O uso automatizado da interface do ChatGPT pode estar sujeito a restrições. Se houver aviso de uso indevido, CAPTCHA, rate limit ou outra proteção, interrompa a automação; não tente contornar. Use uma integração oficialmente suportada quando aplicável.
@@ -65,7 +65,7 @@ py -3 -B -m unittest discover -s scripts -p "test_expert_ai*.py" -q
 pyw -3 -B scripts\expert_ai_hud.py
 ```
 
-Abra primeiro a conversa correta no Edge. Inspecione se a calibração identifica exatamente uma janela. Se o `status` indicar `calibrated=false`, não inicie o supervisor. Inicie-o em um terminal dedicado:
+Abra primeiro a conversa correta no Edge ou Brave. Inspecione se a calibração identifica exatamente uma janela. Se o `status` indicar `calibrated=false`, não inicie o supervisor. Inicie-o em um terminal dedicado:
 ```powershell
 py -3 -B -u scripts\expert_ai_rpa.py run
 ```
@@ -74,7 +74,7 @@ O HUD é um **monitor independente**: fechá-lo não para o supervisor. O superv
 
 ### 8. HUD, opções, pausas e troca de conversa
 
-Quando uma conversa atingir seu limite de tamanho, use a nova aba **Conversa** do HUD. O programa não consegue detectar com segurança a mensagem de limite, então a troca é iniciada por você: **Preparar troca** pausa novas solicitações, gera um prompt para copiar e preserva o checkpoint. Depois de abrir um novo chat com título diferente, execute `py -3 -B scripts/expert_ai_rpa.py migrate-attach` (há 6 segundos para voltar ao Edge), reconciliando o trabalho anterior antes de clicar **Finalizar e retomar**. Os envios permanecem suspensos até o checkpoint estar `ready`, a nova conversa estar calibrada e os limites permitirem. Veja [TROCA_DE_CONVERSA.md](TROCA_DE_CONVERSA.md) para o procedimento completo.
+Quando uma conversa atingir seu limite de tamanho, use a nova aba **Conversa** do HUD. O programa não consegue detectar com segurança a mensagem de limite, então a troca é iniciada por você: **Preparar troca** pausa novas solicitações, gera um prompt para copiar e preserva o checkpoint. Depois de abrir um novo chat com título diferente, execute `py -3 -B scripts/expert_ai_rpa.py migrate-attach` (há 6 segundos para voltar ao navegador), reconciliando o trabalho anterior antes de clicar **Finalizar e retomar**. Os envios permanecem suspensos até o checkpoint estar `ready`, a nova conversa estar calibrada e os limites permitirem. Veja [TROCA_DE_CONVERSA.md](TROCA_DE_CONVERSA.md) para o procedimento completo.
 
 Na aba **Visão geral**: estado, decisão, rodada, acompanhamento, próxima solicitação elegível, uso recente, último commit, última tarefa, testes e resumo. Ao aguardar inatividade, aparece **“Aguardando você terminar”**, com uma barra que avança até os 90 segundos configurados e reinicia ao detectar atividade de mouse ou teclado. O ciclo interno de checagem a cada 10 segundos não aparece como uma contagem regressiva repetitiva; a próxima verificação periódica continua visível quando for relevante. Na aba **Tarefas**: concluídas, parciais e pendentes extraídas de `docs/TASKS.md`. Na aba **Configuração**: Modo Seguro, descansos e valores de limites.
 - Modo Seguro: habilitado por padrão. Intervalo mínimo entre solicitações: 12 min; teto 5 por hora e 120 em 24h. Pode ser alterado. Mesmo desativado, o supervisor continua respeitando foco, estado, inatividade e salvaguardas contra duplicidade.
@@ -126,7 +126,7 @@ Arquivos de `.dev-loop/` incluem títulos da janela, request_ids, logs, estado, 
 Confirme: request_id correto; docs atualizados; testes executados com resultados reais; diff revisado; segredos ausentes; commit criado quando seguro; metadados `last_task`, `last_commit`, `last_quality_check` registrados no JSON; state final `ready` ou `blocked`. O HUD consome esses dados diretamente, sem chamadas extras ao ChatGPT.
 
 ### 12. Limitações
-- O supervisor depende da UI atual do ChatGPT e da janela calibrada; mudanças no Edge ou no ChatGPT podem quebrar o seletor.
+- O supervisor depende da UI atual do ChatGPT e da janela calibrada; mudanças no Edge, Brave ou ChatGPT podem quebrar o seletor.
 - Uso via automação de interface pode estar sujeito às políticas/limites da plataforma. Nem pausas nem limites garantem permissão ou ausência de alertas.
 - O HUD não desenvolve código: ele mostra arquivos, estados e testes que o GPT efetivamente registrou.
 - A ferramenta não inicia um servidor HTTP nem precisa estar conectada a um site para exibir status.

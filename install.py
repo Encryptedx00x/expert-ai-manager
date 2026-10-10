@@ -166,7 +166,7 @@ def install(project: Path, name: str, prefix: str, *, update: bool = False):
     print("FIRST: Open docs/expert-ai-manager/COMECE_AQUI.md in this project.")
     print("SECOND: Copy Prompt A from docs/expert-ai-manager/PROMPTS_PRONTOS.md")
     print("THIRD: Review the plan; only then calibrate and run the supervisor.")
-    print("Calibration (Edge ChatGPT chat in front): py -3 -B scripts/expert_ai_rpa.py calibrate-auto")
+    print("Calibration (Edge/Brave ChatGPT chat in front): py -3 -B scripts/expert_ai_rpa.py calibrate-auto")
     print("HUD: pyw -3 -B scripts/expert_ai_hud.py")
     print("Supervisor, after approval: py -3 -B -u scripts/expert_ai_rpa.py run")
 
