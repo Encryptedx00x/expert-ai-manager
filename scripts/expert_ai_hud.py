@@ -55,6 +55,7 @@ class HUD:
         )}
         self.safe_var = tk.BooleanVar(value=True)
         self.breaks_var = tk.BooleanVar(value=True)
+        self.handoff_var = tk.BooleanVar(value=True)
         self.tab = ttk.Notebook(root)
         self.tab.pack(fill="both", expand=True, padx=10, pady=10)
         self.tab_overview = ttk.Frame(self.tab, padding=12)
@@ -118,6 +119,8 @@ class HUD:
         ttk.Button(bar, text="Limite detectado", command=lambda: self.action("limit-hold")).pack(side="left")
         self.migration_banner = ttk.Label(tab, text="Troca de conversa em andamento. Abra a aba Conversa.",
                                           foreground="#9a620f", wraplength=380)
+        self.context_banner = ttk.Label(
+            tab, text="", foreground="#9a620f", wraplength=380)
         self.headline(tab, "Última entrega")
         for label, key in (("Commit", "commit"), ("Tarefa", "task"), ("Testes", "quality"),
                            ("Resumo", "summary")):
@@ -162,10 +165,20 @@ class HUD:
                         command=self.change_safe).pack(anchor="w", pady=4)
         ttk.Checkbutton(tab, text="Descansos programados", variable=self.breaks_var,
                         command=self.change_breaks).pack(anchor="w", pady=4)
+        ttk.Checkbutton(
+            tab, text="Migrar conversa automaticamente",
+            variable=self.handoff_var, command=self.change_handoff,
+        ).pack(anchor="w", pady=4)
+        ttk.Label(
+            tab, text="Nova conversa, contexto e confirmacao automatizados "
+                 "com seguranca. Limites de uso da conta continuam valendo.",
+            foreground=MUTED, wraplength=370,
+        ).pack(anchor="w", pady=4)
         ttk.Label(tab, text="Os limites reduzem volume de uso. Não ocultam a automação.",
                   foreground=MUTED, wraplength=370).pack(anchor="w", pady=(0, 8))
         self.entries = {}
         labels = {
+            "handoff_after_rounds": "Trocar apos N rodadas",
             "min_minutes_between_requests": "Mín. entre envios (min)",
             "max_requests_per_hour": "Máx. por hora",
             "max_requests_per_24_hours": "Máx. em 24 horas",
@@ -198,8 +211,9 @@ class HUD:
         self.headline(tab, "Trocar de conversa")
         ttk.Label(
             tab,
-            text="Se o chat chegar ao limite, prepare uma troca segura. "
-                 "A ferramenta NÃO abre, envia ou troca conversas sozinha.",
+            text="O EAM abre um novo chat se a conversa ficar longa, "
+                 "atingir seu limite ou houver timeout de entrega. "
+                 "A retomada exige verificacao do checkpoint pelo novo chat.",
             foreground=MUTED, wraplength=370,
         ).pack(anchor="w", pady=(0, 10))
         self.migration_label = ttk.Label(tab, text="Nenhuma troca em andamento.",
@@ -212,7 +226,7 @@ class HUD:
         ttk.Label(
             tab,
             text="3. Abra a nova conversa e envie o prompt. Depois, no PowerShell "
-                 "do projeto, rode migrate-attach e volte ao Edge durante a contagem.",
+                 "do projeto, rode migrate-attach e volte ao Brave/Edge durante a contagem.",
             wraplength=370, foreground=MUTED,
         ).pack(anchor="w", pady=(12, 4))
         ttk.Label(
@@ -317,6 +331,9 @@ class HUD:
     def change_breaks(self):
         self.action("breaks-on" if self.breaks_var.get() else "breaks-off")
 
+    def change_handoff(self):
+        self.action("auto-handoff-on" if self.handoff_var.get() else "auto-handoff-off")
+
     def save_entry(self, field):
         entry = self.entries[field]
         try:
@@ -363,9 +380,25 @@ class HUD:
                 "awaiting_new_chat": "Aguardando novo chat e calibração.",
                 "attached": "Novo chat vinculado. Confira checkpoint e finalize.",
             }
-            self.migration_label.configure(
-                text=migration_labels.get(migration_phase, "Nenhuma troca em andamento.")
-            )
+            migration_text = migration_labels.get(
+                migration_phase, "Nenhuma troca em andamento.")
+            if migration_phase in ("bootstrap_sent", "acknowledged"):
+                migration_text = "Novo chat criado: aguardando recuperacao."
+            elif migration_phase in ("opening_new_chat", "new_chat_opened",
+                                     "bootstrap_pending"):
+                migration_text = "Troca automatica: verificar estado no monitor."
+            elif migration_phase == "awaiting_new_chat" and data.get("migration_trigger") in (
+                    "round_budget", "conversation_limit", "delivery_timeout"):
+                migration_text = "Troca automatica aguardando condicoes seguras."
+            self.migration_label.configure(text=migration_text)
+            self.migration_banner.configure(text=migration_text + " Veja a aba Conversa.")
+            budget = data.get("conversation_budget") or {}
+            if not migration_phase and budget.get("level") in ("suggest", "recommend"):
+                self.context_banner.configure(text="Conversa: " + budget.get("label", ""))
+                if not self.context_banner.winfo_manager():
+                    self.context_banner.pack(before=self.action_bar, anchor="w", pady=(5, 2))
+            elif self.context_banner.winfo_manager():
+                self.context_banner.pack_forget()
             if migration_phase:
                 if not self.migration_banner.winfo_manager():
                     self.migration_banner.pack(before=self.action_bar, anchor="w", pady=(5, 2))
@@ -399,6 +432,7 @@ class HUD:
             self.vars["summary"].set(short(data["summary"], 170))
             self.safe_var.set(data["safe_mode"])
             self.breaks_var.set(data["breaks_enabled"])
+            self.handoff_var.set(data.get("handoff_enabled", True))
             self.update_tasks(data)
             if self.tab.index("current") == 2 and self.root.focus_get() not in self.entries.values():
                 for key, widget in self.entries.items():

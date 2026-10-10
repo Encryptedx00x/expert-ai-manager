@@ -20,13 +20,14 @@ PACKAGE = Path(__file__).resolve().parent
 SCRIPTS = [
     "expert_ai_rpa.py", "expert_ai_state.py", "expert_ai_composer.ps1",
     "expert_ai_safety.py", "expert_ai_control.py", "expert_ai_migration.py",
-    "expert_ai_context.py", "expert_ai_hud_data.py", "expert_ai_hud.py",
+    "expert_ai_context.py", "expert_ai_auto_chat.py", "expert_ai_chat_nav.ps1",
+    "expert_ai_hud_data.py", "expert_ai_hud.py",
 ]
 TESTS = [
     "test_expert_ai_rpa.py", "test_expert_ai_rpa_delivery.py",
     "test_expert_ai_state.py", "test_expert_ai_safety.py",
     "test_expert_ai_hud.py", "test_expert_ai_migration.py",
-    "test_expert_ai_context.py",
+    "test_expert_ai_context.py", "test_expert_ai_auto_chat.py",
 ]
 DEFAULT_CONFIG = {
     "schema_version": 1,
@@ -45,6 +46,8 @@ DEFAULT_CONFIG = {
     "max_unacknowledged_minutes": 45,
     "max_pending_send_minutes": 30,
     "max_running_minutes": 120,
+    "automatic_conversation_handoff": True,
+    "handoff_after_rounds": 8,
     "safe_mode_enabled": True,
     "breaks_enabled": True,
     "min_minutes_between_requests": 12,

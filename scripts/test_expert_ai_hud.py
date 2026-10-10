@@ -59,6 +59,30 @@ class HudTests(unittest.TestCase):
                 control.set_option("breaks_enabled", False)
                 self.assertFalse(control.load(target)["breaks_enabled"])
 
+    def test_handoff_settings_validate_round_bounds_and_preserve_calibration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "config.json"
+            original = {
+                **control.read_settings(),
+                "window_title": "Old Brave Chat",
+                "conversation_url": "https://chatgpt.com/c/111",
+                "calibrated": True,
+                "message": "Keep state",
+            }
+            control.atomic_save(target, original)
+            with patch.object(control, "CONFIG", target):
+                control.set_option("handoff_after_rounds", 12)
+                control.set_option("automatic_conversation_handoff", False)
+                saved = control.load(target)
+                self.assertEqual(saved["handoff_after_rounds"], 12)
+                self.assertFalse(saved["automatic_conversation_handoff"])
+                self.assertEqual(saved["message"], "Keep state")
+                self.assertEqual(saved["conversation_url"], original["conversation_url"])
+                for invalid in (3, 101, True, "8", -1):
+                    with self.assertRaises(ValueError):
+                        control.set_option("handoff_after_rounds", invalid)
+                self.assertEqual(control.load(target), saved)
+
     def test_idle_readout_counts_up_without_exposing_ten_second_poll(self):
         sample = {
             "paused": False, "limit_hold": False, "supervisor_live": True,

@@ -34,6 +34,11 @@ class InstallerTests(unittest.TestCase):
                 self.assertTrue((handbook / filename).is_file(), filename)
             self.assertTrue((project / "scripts/expert_ai_rpa.py").is_file())
             self.assertTrue((project / "scripts/expert_ai_migration.py").is_file())
+            self.assertTrue((project / "scripts/expert_ai_auto_chat.py").is_file())
+            self.assertTrue((project / "scripts/expert_ai_chat_nav.ps1").is_file())
+            self.assertTrue((project / "scripts/test_expert_ai_auto_chat.py").is_file())
+            self.assertTrue(cfg["automatic_conversation_handoff"])
+            self.assertEqual(cfg["handoff_after_rounds"], 8)
             self.assertTrue((project / "scripts/test_expert_ai_migration.py").is_file())
             self.assertEqual((project / ".gitignore").read_text(encoding="utf-8").count(".dev-loop/"), 1)
 

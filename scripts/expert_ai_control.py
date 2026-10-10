@@ -3,7 +3,7 @@
 Only locally persisted, explicitly visible controls. No UI camouflage.
 Run: py -3 -B scripts/expert_ai_control.py status | safe-on | safe-off |
      breaks-on | breaks-off | pause | resume | limit-hold | limit-clear |
-     migrate-start | migrate-finish | migrate-cancel |
+     migrate-start | migrate-finish | migrate-cancel | migrate-ack <id> |
      set <allowlisted-key> <value>
 """
 from __future__ import annotations
@@ -15,6 +15,8 @@ from pathlib import Path
 import uuid
 
 from expert_ai_safety import DEFAULT_SAFETY, pace_status, new_ledger, validate_safety
+from expert_ai_context import (DEFAULT_HANDOFF_ENABLED, DEFAULT_HANDOFF_AFTER_ROUNDS,
+                               MIN_HANDOFF_ROUNDS, MAX_HANDOFF_ROUNDS)
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / ".dev-loop"
@@ -36,6 +38,7 @@ SETTABLE = {
     "long_break_min_minutes": float,
     "long_break_max_minutes": float,
     "min_user_idle_seconds": int,
+    "handoff_after_rounds": int,
 }
 
 def load(path: Path, fallback: dict | None = None) -> dict:
@@ -60,11 +63,24 @@ def atomic_save(path: Path, value: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 def read_settings() -> dict:
-    return {**DEFAULT_SAFETY, **load(CONFIG)}
+    return {
+        **DEFAULT_SAFETY,
+        "automatic_conversation_handoff": DEFAULT_HANDOFF_ENABLED,
+        "handoff_after_rounds": DEFAULT_HANDOFF_AFTER_ROUNDS,
+        **load(CONFIG),
+    }
 
 def set_option(field: str, value) -> dict:
-    if field not in SETTABLE and field not in ("safe_mode_enabled", "breaks_enabled"):
+    if field not in SETTABLE and field not in (
+        "safe_mode_enabled", "breaks_enabled", "automatic_conversation_handoff"
+    ):
         raise ValueError("Option not adjustable using this command")
+    if field == "handoff_after_rounds" and (
+        type(value) is not int or not MIN_HANDOFF_ROUNDS <= value <= MAX_HANDOFF_ROUNDS
+    ):
+        raise ValueError("Handoff rounds must be an integer between 4 and 100")
+    if field == "automatic_conversation_handoff" and not isinstance(value, bool):
+        raise ValueError("Handoff enabled must be boolean")
     current = load(CONFIG)
     merged = {**DEFAULT_SAFETY, **current, field: value}
     validate_safety(merged)
@@ -86,6 +102,10 @@ def snapshot() -> dict:
         "migration": migration_status(),
         "platform_limit_hold": LIMIT.exists(),
         "config": {key: config[key] for key in DEFAULT_SAFETY},
+        "conversation_handoff": {
+            "enabled": config["automatic_conversation_handoff"],
+            "after_rounds": config["handoff_after_rounds"],
+        },
         "periodic_check_window_minutes": [
             config.get("min_periodic_minutes", 10),
             config.get("max_periodic_minutes", 20),
@@ -96,11 +116,14 @@ def snapshot() -> dict:
 
 def command(name: str, field: str | None = None, value: str | None = None) -> dict:
     from expert_ai_migration import (migration_status, prepare_migration,
-                                     finish_migration, cancel_migration)
+                                     finish_migration, cancel_migration,
+                                     acknowledge_auto_migration)
     if name == "migrate-start":
         prepare_migration()
     elif name == "migrate-finish":
         finish_migration()
+    elif name == "migrate-ack":
+        acknowledge_auto_migration(field or "")
     elif name == "migrate-cancel":
         cancel_migration()
     elif name == "pause":
@@ -119,6 +142,10 @@ def command(name: str, field: str | None = None, value: str | None = None) -> di
         set_option("safe_mode_enabled", True)
     elif name == "safe-off":
         set_option("safe_mode_enabled", False)
+    elif name == "auto-handoff-on":
+        set_option("automatic_conversation_handoff", True)
+    elif name == "auto-handoff-off":
+        set_option("automatic_conversation_handoff", False)
     elif name == "breaks-on":
         set_option("breaks_enabled", True)
     elif name == "breaks-off":
@@ -135,7 +162,8 @@ def main() -> None:
     parser.add_argument("command", choices=[
         "status", "pause", "resume", "limit-hold", "limit-clear",
         "safe-on", "safe-off", "breaks-on", "breaks-off", "set",
-        "migrate-start", "migrate-finish", "migrate-cancel"
+        "auto-handoff-on", "auto-handoff-off", "migrate-start", "migrate-finish",
+        "migrate-cancel", "migrate-ack"
     ])
     parser.add_argument("field", nargs="?")
     parser.add_argument("value", nargs="?")

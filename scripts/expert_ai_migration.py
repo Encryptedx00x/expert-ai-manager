@@ -6,6 +6,7 @@ It does not acknowledge, reset, or complete an in-flight request.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import uuid
 
 from expert_ai_control import ROOT, RUNTIME, CONFIG, STATE, PAUSE, LIMIT, load, atomic_save
 from expert_ai_context import start_session
@@ -21,7 +22,7 @@ def migration_status() -> dict:
     return load(MIGRATION)
 
 
-def prepare_migration() -> dict:
+def prepare_migration(*, trigger: str = "manual", budget_rounds: int | None = None) -> dict:
     if MIGRATION.exists():
         raise RuntimeError("Uma troca de conversa já está pendente. Abra as instruções.")
     state = load(STATE)
@@ -30,6 +31,13 @@ def prepare_migration() -> dict:
         raise RuntimeError("Existe um rascunho pendente. Verifique o envio antes de trocar de conversa.")
     if state.get("status") not in ("ready", "running", "requested", "blocked"):
         raise RuntimeError("Não é seguro iniciar a troca com este estado.")
+    if trigger not in ("manual", "round_budget", "conversation_limit", "delivery_timeout"):
+        raise ValueError("Unknown conversation handoff trigger")
+    if trigger == "round_budget" and (
+        state.get("status") != "ready"
+        or not isinstance(budget_rounds, int) or budget_rounds < 0
+    ):
+        raise RuntimeError("Automatic handoff requires a ready checkpoint and valid round count")
     was_paused = PAUSE.exists()
     # Pause first: a supervisor cannot create another request after preparation.
     PAUSE.touch()
@@ -48,6 +56,12 @@ def prepare_migration() -> dict:
         "request_id": state.get("request_id", ""),
         "round": state.get("round", 0),
         "initial_status": state.get("status"),
+        "trigger": trigger,
+        "migration_id": uuid.uuid4().hex[:16],
+        "budget_rounds": budget_rounds if trigger == "round_budget" else None,
+        "last_commit": state.get("last_commit"),
+        "last_task": state.get("last_task"),
+        "last_quality_check": state.get("last_quality_check"),
     }
     atomic_save(MIGRATION, handoff)
     return handoff
@@ -64,47 +78,56 @@ def verify_same_request(handoff: dict) -> dict:
 
 
 def recovery_prompt(handoff: dict) -> str:
-    """Human-copyable context, without pretending the earlier task finished."""
+    """Human-copyable verified checkpoint; no new development request_id."""
     path = str(ROOT)
+    identifier = str(handoff.get("migration_id") or "")
     return (
-        "RETOMAR PROJETO EM UMA NOVA CONVERSA DO CHATGPT.\n\n"
-        f"Diretório no computador autorizado: {path}\n"
+        "RECUPERAR PROJETO NESTE NOVO CHAT DO CHATGPT.\\n\\n"
+        f"Diretorio local: {path}\\n"
         f"Rodada anterior: {handoff.get('round', '?')}; "
-        f"request_id: {handoff.get('request_id') or 'nenhum'}; "
-        f"estado observado ao preparar migração: {handoff.get('initial_status', 'desconhecido')}.\n\n"
-        "A conversa anterior foi encerrada ou ficou extensa demais. "
-        "O Expert AI Manager está pausado para impedir novos envios durante a troca.\n\n"
-        "1. Use Remote Desktop Commander para conferir o dispositivo e ler AGENTS.md, "
-        "docs/TASKS.md, docs/STATE.md, .dev-loop/chat-state.json e Git status/log.\n"
-        "2. Leia o estado ATUAL, pois ele pode ter mudado desde a preparação. "
-        "Preserve os arquivos locais e eventuais mudanças não commitadas.\n"
-        "3. Se o checkpoint ainda estiver running, requested, pending_send ou blocked, "
-        "NÃO o declare concluído nem crie outro request_id. Investigue o trabalho já "
-        "feito na conversa anterior e os logs. Recupere/termine somente o que for "
-        "comprovável, pelo protocolo de AGENTS.md; se inseguro, reporte o bloqueio.\n"
-        "4. Se estiver ready, apresente resumo breve do último commit, tarefas, "
-        "testes e próximo passo. Não dispare outro supervisor.\n"
-        "5. Este chat passa a ser a conversa principal. Confirme quando posso anexar "
-        "a nova janela ao Expert AI Manager. O usuário fará essa vinculação manualmente; "
-        "não remova PAUSE nem .dev-loop/chat-migration.json por conta própria.\n"
-        "6. Preserve serviços de outros projetos, segurança, limites e os critérios "
-        "de qualidade, testes, revisão do diff e commits seguros.\n\n"
-        "Após a confirmação da migração e do checkpoint seguro, o supervisor "
-        "retomará as próximas etapas automaticamente."
+        f"request_id anterior: {handoff.get('request_id') or 'nenhum'}; "
+        f"status anterior: {handoff.get('initial_status', 'desconhecido')}.\\n"
+        f"Commit anterior: {handoff.get('last_commit') or 'nao registrado'}.\\n"
+        f"Ultima tarefa: {handoff.get('last_task') or 'nao registrada'}.\\n"
+        f"Testes informados: {handoff.get('last_quality_check') or 'nao registrados'}.\\n\\n"
+        "1. Conecte ao computador autorizado via Remote Desktop Commander. "
+        "Leia AGENTS.md, docs/EXECUTION_PLAN.md (se existir), docs/TASKS.md, "
+        "docs/STATE.md, .dev-loop/chat-state.json, "
+        ".dev-loop/chat-migration.json e Git status/log.\\n"
+        "2. Preserve absolutamente o request_id e a rodada anterior. "
+        "n\u00e3o registre nova rodada de desenvolvimento nem reinicie supervisor ou HUD.\\n"
+        "3. Se houver running, requested ou blocked, verifique o diff, os testes "
+        "e os logs da rodada anterior; apenas reconcilie para ready se tiver "
+        "comprovado que ela foi concluida, ou mantenha blocked e explique.\\n"
+        "4. Se o checkpoint for ready, confirme as tarefas/commit/testes e o "
+        "proximo lote. O EAM esta intencionalmente PAUSADO durante a migracao.\\n"
+        "5. Se a fase no chat-migration.json for bootstrap_sent e o checkpoint "
+        "estiver ready, confirme a recuperacao executando via Remote Desktop: "
+        f"py -3 -B scripts/expert_ai_control.py migrate-ack {identifier}. "
+        "Nunca execute migrate-ack se houver incerteza. Isso nao envia mensagem.\\n"
+        "6. Se a migracao for manual, use o HUD ou migrate-attach e "
+        "migrate-finish conforme docs/expert-ai-manager/TROCA_DE_CONVERSA.md. "
+        "A vinculacao automatica exige a URL exata do novo chat e o ACK local. "
+        "Nao remova PAUSE nem o marcador de migracao manualmente. "
+        "Mantenha todas as regras, testes, seguranca e limites de uso.\\n\\n"
+        f"[migration_id: {identifier}]"
     )
 
 
 def attach_migration(new_title: str) -> dict:
     handoff = migration_status()
-    if handoff.get("phase") != "awaiting_new_chat":
+    if handoff.get("phase") not in ("awaiting_new_chat", "acknowledged"):
         raise RuntimeError("Prepare a migração antes de anexar uma conversa.")
     if not PAUSE.exists():
         raise RuntimeError("Migração requer o supervisor pausado.")
     state = verify_same_request(handoff)
     if state.get("status") == "pending_send":
         raise RuntimeError("Há rascunho pendente; inspecione antes de mudar de conversa.")
-    if not new_title.strip() or new_title.casefold() == handoff.get("previous_window_title", "").casefold():
-        raise RuntimeError("A janela parece ser a conversa anterior. Abra e renomeie o novo chat.")
+    if not new_title.strip():
+        raise RuntimeError("New conversation must have a browser title")
+    if (new_title.casefold() == handoff.get("previous_window_title", "").casefold()
+            and not handoff.get("previous_conversation_url")):
+        raise RuntimeError("A janela parece ser da conversa anterior; confira o endereco.")
     config = load(CONFIG)
     if not config.get("calibrated") or config.get("window_title") != new_title:
         raise RuntimeError("A nova conversa ainda não foi calibrada.")
@@ -156,3 +179,20 @@ def cancel_migration() -> dict:
     if not handoff.get("previously_paused"):
         PAUSE.unlink()
     return {"phase": "cancelled", "resumed": not handoff.get("previously_paused")}
+
+
+def acknowledge_auto_migration(migration_id: str) -> dict:
+    """Only the recovered GPT explicitly confirms the prior work is safe."""
+    handoff = migration_status()
+    if handoff.get("phase") != "bootstrap_sent":
+        raise RuntimeError("Auto migration is not awaiting recovery acknowledgement")
+    if not migration_id or migration_id != handoff.get("migration_id"):
+        raise RuntimeError("Migration ID mismatch; cannot acknowledge another conversation")
+    if not PAUSE.exists() or LIMIT.exists():
+        raise RuntimeError("Migration pause missing or platform limit present")
+    state = verify_same_request(handoff)
+    if state.get("status") != "ready":
+        raise RuntimeError("Reconcile the previous request to ready before acknowledgement")
+    handoff.update(phase="acknowledged", acknowledged_at=utc_now())
+    atomic_save(MIGRATION, handoff)
+    return handoff

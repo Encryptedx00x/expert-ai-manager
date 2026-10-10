@@ -15,7 +15,7 @@ import sys
 from expert_ai_control import RUNTIME, STATE, MONITOR, USAGE, CONFIG, PAUSE, LIMIT, load, read_settings
 from expert_ai_safety import new_ledger, pace_status, parse_utc
 from expert_ai_migration import migration_status
-from expert_ai_context import context_budget, read_session
+from expert_ai_context import context_budget, read_session, handoff_policy
 
 ROOT = RUNTIME.parent
 TASKS = ROOT / "docs" / "TASKS.md"
@@ -134,7 +134,8 @@ def progress_snapshot() -> dict:
     state = load(STATE)
     monitor = load(MONITOR)
     migration = migration_status()
-    budget = context_budget(state.get("round", 0), read_session())
+    session = read_session()
+    budget = context_budget(state.get("round", 0), session)
     usage = load(USAGE, new_ledger())
     try:
         pacing = pace_status(cfg, usage)
@@ -161,6 +162,15 @@ def progress_snapshot() -> dict:
         "summary": state.get("summary", ""),
         "paused": PAUSE.exists(),
         "migration_phase": migration.get("phase"),
+        "migration_trigger": migration.get("trigger"),
+        "conversation_budget": budget,
+        "conversation_handoff": handoff_policy(
+            state, cfg, session,
+            pending_count=len(tasks["pending"]), paused=PAUSE.exists(),
+            migration_pending=bool(migration), limit_hold=LIMIT.exists(),
+        ),
+        "handoff_enabled": cfg.get("automatic_conversation_handoff", True),
+        "handoff_after_rounds": cfg.get("handoff_after_rounds", 8),
         "limit_hold": LIMIT.exists(),
         "supervisor_live": live,
         "supervisor_action": monitor.get("action") or "—",

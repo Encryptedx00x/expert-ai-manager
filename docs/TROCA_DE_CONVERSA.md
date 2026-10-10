@@ -1,6 +1,6 @@
 # Trocar de conversa sem perder o projeto
 
-Quando o ChatGPT indicar que uma conversa ficou longa demais, use **Expert AI Manager → aba Conversa**. Esta é a migração manual assistida (v1): o programa **não detecta com precisão a mensagem de limite** e não abre chats sozinho. A ferramenta só solicita que você abra outro chat depois de clicar em **Preparar troca**.
+A versao atual oferece **troca automatica** (ver secao "Troca automatica (v2)" ao final) e o fluxo **manual assistido** abaixo para recuperar casos bloqueados. A automacao so abre um novo chat quando encontra condicoes verificaveis; limites de uso da conta nao sao contornados.
 
 ## O que é preservado
 
@@ -70,20 +70,22 @@ py -3 -B scripts\expert_ai_control.py migrate-cancel
 
 Isso restaura a condição de pausa anterior, sem modificar o checkpoint. **Depois de anexar um novo chat, não existe retorno automático**: inspecione a configuração e o estado antes de corrigir manualmente.
 
-## Prevenção de conversas muito extensas
+## Troca automatica (v2)
 
-- O Expert AI Manager agora envia orientações para agrupar **2–4 tarefas relacionadas**, sem comprometer os testes ou a segurança, e resume saídas de comandos/logs na própria conversa.
-- Após uma migração **realmente concluída**, registra a rodada inicial desta conversa em `.dev-loop/conversation-session.json` (ignorado pelo Git). O contador estima rodadas, **não o número de tokens**, tamanho do contexto nem o limite exato do produto.
-- Após **5 rodadas** desde a troca, recomenda considerar uma conversa nova; após **8 rodadas**, sugere planejar a migração imediatamente. São apenas avisos no log e em `py -3 -B scripts/expert_ai_rpa.py status`; não alteram o estado `ready`, não apagam `request_id` e não impedem a próxima tarefa.
-- Ao atualizar um projeto antigo que nunca registrou a rodada inicial, o HUD/estado indicará histórico anterior **desconhecido**; não será inventado um consumo de tokens nem um número de rodadas passadas.
-- Ao visualizar esses avisos, use os passos de migração acima em um momento com checkpoint seguro, preferencialmente `ready`.
+O EAM pode fazer a migracao automaticamente usando o botao visivel New chat no Brave/Edge e as APIs de acessibilidade do Windows. Na configuracao nova, essa opcao fica ativada, com gatilho preventivo de 8 rodadas desde a ultima migracao segura (ajustavel de 4 a 100). O contador e uma aproximacao: o EAM nao conhece o numero de tokens nem o limite real da conversa.
 
-## Limitações e segurança
+Ha dois gatilhos adicionais: aviso explicito de conversa muito longa, e o alerta "Message delivery timed out. Please try again.". O ultimo caso e uma migracao de recuperacao: nao prova que a conversa chegou ao limite. Se o limite for de uso da conta/plano, o EAM pausa e NAO abre outra conversa para contorna-lo.
 
-- **Não há detecção automática confiável do limite da conversa.** A v1 depende de você reconhecer o aviso e acionar o botão no HUD.
-- **Não é uma migração do histórico completo** da interface do ChatGPT.
-- Não há automação para abrir chats, mudar de aba ou enviar o prompt de recuperação.
-- O botão normal **Retomar** fica bloqueado durante a migração; use o fluxo acima.
-- A recuperação não zera limites de uso nem apaga identificadores.
-- Nunca renomeie/remova o marcador ou o arquivo PAUSE apenas para conseguir enviar mensagens.
-- Não atualize código do supervisor em execução enquanto houver uma rodada não reconciliada; espere um checkpoint seguro.
+Procedimento: preparar PAUSE e chat-migration.json -> validar janela/URL/botao New chat -> abrir uma unica conversa -> conferir novo compositor -> enviar um prompt de recuperacao com migration_id -> novo GPT verifica AGENTS, tarefas, Git, testes e o checkpoint -> novo GPT executa migrate-ack com o mesmo migration_id -> EAM confirma URL final e marcador postado -> recalibra e conclui migrate-finish.
+
+O envio de recuperacao e reservado no ledger de tentativas. Se o navegador perder o foco, ocorrer rascunho pendente, erro na navegacao ou entrega ambigua, o fluxo PARA para inspe??o, sem clicar ou enviar de novo sozinho. Nunca gera um novo request_id de desenvolvimento durante a migracao. Se a rodada estiver running/requested, o novo GPT devera reconciliar com evidencias antes de confirmar ready; nao pode inventar progresso.
+
+Comandos de configuracao:
+- py -3 -B scripts/expert_ai_control.py auto-handoff-on
+- py -3 -B scripts/expert_ai_control.py auto-handoff-off
+- py -3 -B scripts/expert_ai_control.py set handoff_after_rounds 8
+- py -3 -B scripts/expert_ai_rpa.py status
+
+HUD, aba Configuracao: Migrar conversa automaticamente e Trocar apos N rodadas.
+
+O fluxo manual das secoes anteriores permanece como recuperacao alternativa. Nao instalar esta nova versao enquanto o supervisor anterior tiver uma rodada em execucao.

@@ -16,6 +16,10 @@ SESSION = ROOT / ".dev-loop" / "conversation-session.json"
 
 SOFT_ROUNDS = 5
 STRONG_ROUNDS = 8
+DEFAULT_HANDOFF_ENABLED = True
+DEFAULT_HANDOFF_AFTER_ROUNDS = 8
+MIN_HANDOFF_ROUNDS = 4
+MAX_HANDOFF_ROUNDS = 100
 
 COMPACT_INSTRUCTIONS = (
     "Nesta rodada priorize 2 a 4 tarefas RELACIONADAS quando viável; "
@@ -116,3 +120,39 @@ def context_budget(round_number: int, session: dict, *,
     else:
         level, label = "ok", f"{rounds} rodadas neste chat (estimativa, não tokens)"
     return {"level": level, "rounds": rounds, "label": label}
+
+
+def handoff_policy(state: dict, config: dict, session: dict, *,
+                   pending_count: int, paused: bool, migration_pending: bool,
+                   limit_hold: bool) -> dict:
+    """Preflight: never prepare a new chat while work or a draft is in flight.
+
+    A verified conversation baseline is mandatory: the tool cannot infer token
+    count or the exact ChatGPT conversation ceiling from browser UI.
+    """
+    active = config.get("automatic_conversation_handoff", DEFAULT_HANDOFF_ENABLED)
+    threshold = config.get("handoff_after_rounds", DEFAULT_HANDOFF_AFTER_ROUNDS)
+    if not isinstance(active, bool):
+        return {"should_prepare": False, "reason": "invalid handoff switch"}
+    if (type(threshold) is not int
+            or not MIN_HANDOFF_ROUNDS <= threshold <= MAX_HANDOFF_ROUNDS):
+        return {"should_prepare": False, "reason": "invalid handoff threshold"}
+    if not active:
+        return {"should_prepare": False, "reason": "disabled"}
+    if migration_pending:
+        return {"should_prepare": False, "reason": "migration already pending"}
+    if paused or limit_hold:
+        return {"should_prepare": False, "reason": "paused or platform limit"}
+    if state.get("status") != "ready":
+        return {"should_prepare": False, "reason": "checkpoint not ready"}
+    if pending_count < 1:
+        return {"should_prepare": False, "reason": "no further tasks"}
+    if session.get("baseline_known") is not True:
+        return {"should_prepare": False, "reason": "conversation baseline unknown"}
+    start, current = session.get("start_round"), state.get("round")
+    if type(start) is not int or type(current) is not int or start < 0 or current < start:
+        return {"should_prepare": False, "reason": "invalid round baseline"}
+    count = current - start
+    return {"should_prepare": count >= threshold,
+            "reason": ("handoff due" if count >= threshold else "below threshold"),
+            "rounds": count, "threshold": threshold}

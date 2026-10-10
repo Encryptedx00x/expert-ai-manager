@@ -237,6 +237,73 @@ class MigrationTests(unittest.TestCase):
         self.assertFalse(result["resumed"])
         self.assertTrue(self.pause.exists())
 
+    def test_automatic_round_handoff_requires_ready_and_preserves_state(self):
+        before = control.load(self.state)
+        with self.assertRaisesRegex(RuntimeError, "ready"):
+            migration.prepare_migration(trigger="round_budget", budget_rounds=8)
+        self.assertFalse(self.pause.exists())
+        control.atomic_save(self.state, {**before, "status": "ready"})
+        before = control.load(self.state)
+        handoff = migration.prepare_migration(trigger="round_budget", budget_rounds=8)
+        self.assertTrue(self.pause.exists())
+        self.assertEqual(handoff["trigger"], "round_budget")
+        self.assertEqual(handoff["budget_rounds"], 8)
+        self.assertEqual(handoff["request_id"], before["request_id"])
+        self.assertEqual(control.load(self.state), before)
+        self.assertRegex(handoff["migration_id"], r"^[0-9a-f]{16}$")
+        prompt = migration.recovery_prompt(handoff)
+        self.assertIn("[migration_id: " + handoff["migration_id"] + "]", prompt)
+        self.assertIn("migrate-ack", prompt)
+        self.assertIn("docs/EXECUTION_PLAN.md", prompt)
+        self.assertIn("\\n", repr(prompt))
+
+    def test_timeout_handoff_preserves_running_checkpoint_without_fake_ready(self):
+        before = control.load(self.state)
+        handoff = migration.prepare_migration(trigger="delivery_timeout")
+        self.assertEqual(control.load(self.state), before)
+        self.assertEqual(handoff["initial_status"], "running")
+        self.assertEqual(handoff["trigger"], "delivery_timeout")
+        self.assertTrue(self.pause.exists())
+        self.assertEqual(migration.migration_status()["phase"], "awaiting_new_chat")
+
+    def test_auto_recovery_ack_requires_exact_id_and_safe_checkpoint(self):
+        control.atomic_save(self.state, {**self.state_value, "status": "ready"})
+        handoff = migration.prepare_migration(trigger="conversation_limit")
+        handoff["phase"] = "bootstrap_sent"
+        control.atomic_save(self.marker, handoff)
+        with self.assertRaisesRegex(RuntimeError, "ID mismatch"):
+            migration.acknowledge_auto_migration("bad-token")
+        ack = migration.acknowledge_auto_migration(handoff["migration_id"])
+        self.assertEqual(ack["phase"], "acknowledged")
+        self.assertTrue(self.pause.exists())
+        self.assertEqual(control.load(self.state)["request_id"], self.state_value["request_id"])
+        with self.assertRaisesRegex(RuntimeError, "awaiting recovery"):
+            migration.acknowledge_auto_migration(handoff["migration_id"])
+        # A verified URL allows same window title, but not the same chat URL.
+        old = "https://chatgpt.com/c/11111111-1111-4111-8111-111111111111"
+        new = "https://chatgpt.com/c/22222222-2222-4222-8222-222222222222"
+        control.atomic_save(self.marker, {**ack, "previous_conversation_url": old})
+        control.atomic_save(self.config, {**self.config_value, "conversation_url": new})
+        migration.attach_migration(self.config_value["window_title"])
+        finished = migration.finish_migration()
+        self.assertTrue(finished["resumed"])
+        self.assertFalse(self.pause.exists())
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(control.load(self.state)["round"], 13)
+
+    def test_auto_ack_fails_on_running_or_platform_limit(self):
+        handoff = migration.prepare_migration(trigger="delivery_timeout")
+        handoff["phase"] = "bootstrap_sent"
+        control.atomic_save(self.marker, handoff)
+        with self.assertRaisesRegex(RuntimeError, "ready"):
+            migration.acknowledge_auto_migration(handoff["migration_id"])
+        control.atomic_save(self.state, {**self.state_value, "status": "ready"})
+        self.limit.touch()
+        with self.assertRaisesRegex(RuntimeError, "limit"):
+            migration.acknowledge_auto_migration(handoff["migration_id"])
+        self.assertEqual(migration.migration_status()["phase"], "bootstrap_sent")
+        self.assertTrue(self.pause.exists())
+
     def test_hud_displays_migration_instead_of_idle_countdown(self):
         base = {
             "paused": True, "limit_hold": False, "supervisor_live": True,

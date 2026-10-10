@@ -30,9 +30,13 @@ import time
 import uuid
 
 from expert_ai_safety import DEFAULT_SAFETY, new_ledger, pace_status, record_attempt, parse_utc
-from expert_ai_migration import MIGRATION, migration_status, attach_migration
+from expert_ai_migration import MIGRATION, migration_status, attach_migration, prepare_migration
+from expert_ai_control import atomic_save
+from expert_ai_migration import recovery_prompt
+from expert_ai_auto_chat import browser_navigation, classify_visible_warnings
 from expert_ai_context import (compact_message, initialize_if_missing,
-                               read_session, context_budget)
+                               read_session, context_budget, handoff_policy,
+                               DEFAULT_HANDOFF_ENABLED, DEFAULT_HANDOFF_AFTER_ROUNDS)
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / ".dev-loop"
@@ -53,6 +57,8 @@ DEFAULTS = {
     "min_user_idle_seconds": 90,
     "max_auto_requests": 0,  # 0: no cap; test mode sets 2
     "min_free_ram_gib": 2.0,
+    "automatic_conversation_handoff": DEFAULT_HANDOFF_ENABLED,
+    "handoff_after_rounds": DEFAULT_HANDOFF_AFTER_ROUNDS,
     "max_unacknowledged_minutes": 45,
     "max_pending_send_minutes": 30,
     "max_running_minutes": 120,
@@ -334,8 +340,9 @@ def calibrate_auto(*, migration_title: str | None = None,
         raise RuntimeError(f"Foreground app is {exe!r}, expected Edge/Brave/ChatGPT")
     if not title.strip():
         raise RuntimeError("The selected ChatGPT window must have a title")
-    if migration_title is not None and title.casefold() == migration_title.casefold():
-        raise RuntimeError("A nova conversa precisa de um título diferente da anterior.")
+    if (migration_title is not None and title.casefold() == migration_title.casefold()
+            and not migration_url):
+        raise RuntimeError("New conversation needs a different title or verified URL")
     # Identify the live ChatGPT composer by its accessible name instead of
     # assuming every project conversation has the same browser window title.
     bounds = composer_bounds(hwnd)
@@ -659,6 +666,12 @@ def show_status() -> None:
         "monitor": read_json(MONITOR),
         "next_tasks": pending[:6], "paused": PAUSE.exists(),
         "conversation_budget": context_budget(state.get("round", 0), read_session()),
+        "conversation_handoff": handoff_policy(
+            state, config, read_session(), pending_count=len(pending),
+            paused=PAUSE.exists(), migration_pending=MIGRATION.exists(),
+            limit_hold=LIMIT.exists(),
+        ),
+        "migration_phase": migration_status().get("phase"),
         "ram_gib": round(free_ram_gib(), 2),
         "user_idle_seconds": round(user_idle_seconds(), 1),
     }, indent=2, ensure_ascii=False))
@@ -696,6 +709,8 @@ def wait_for_change(state: dict, config: dict, timeout_seconds: float,
     until = time.monotonic() + timeout_seconds
     original_status = (state.get("status"), state.get("request_id"), state.get("round"))
     original_pause = PAUSE.exists()
+    original_migration_stamp = MIGRATION.stat().st_mtime_ns if MIGRATION.exists() else 0
+    last_notice_inspection = time.monotonic()
     original_config = CONFIG.stat().st_mtime_ns if CONFIG.exists() else 0
     while time.monotonic() < until:
         time.sleep(min(5.0, max(0.1, until - time.monotonic())))
@@ -713,7 +728,210 @@ def wait_for_change(state: dict, config: dict, timeout_seconds: float,
         next_config = CONFIG.stat().st_mtime_ns if CONFIG.exists() else 0
         if next_config != original_config:
             return "configuration changed"
+        next_migration_stamp = MIGRATION.stat().st_mtime_ns if MIGRATION.exists() else 0
+        if next_migration_stamp != original_migration_stamp:
+            return "conversation migration updated"
+        if (not PAUSE.exists() and not MIGRATION.exists()
+                and state.get("status") in ("ready", "requested", "running")
+                and time.monotonic() - last_notice_inspection >= 75):
+            last_notice_inspection = time.monotonic()
+            try:
+                if browser_limit_notice(config) in ("conversation_length", "delivery_timeout", "account_limit"):
+                    return "conversation/usage warning detected"
+            except Exception as exc:
+                logging.debug("Browser warning inspection deferred: %s", exc)
     return "periodic health check"
+
+
+
+
+def inspect_browser(hwnd: int, action: str = "inspect", *,
+                    old_url: str = "", expected_new_url: str = "", handoff_id: str = "") -> dict:
+    return browser_navigation(
+        ROOT / "scripts" / "expert_ai_chat_nav.ps1", hwnd,
+        action=action, old_url=old_url, expected_new_url=expected_new_url, handoff_id=handoff_id,
+    )
+
+
+def browsers_at_url(config: dict) -> list[tuple[int, dict]]:
+    """Locate the exact calibrated browser URL even if composer disappeared."""
+    candidates = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    @callback_type
+    def visit(hwnd, _):
+        if U.IsWindowVisible(hwnd) and win_title(hwnd):
+            candidates.append(hwnd)
+        return True
+
+    U.EnumWindows(visit, 0)
+    matched = []
+    expected = config.get("conversation_url", "")
+    if not expected:
+        return []
+    for hwnd in candidates:
+        if process_name(hwnd) != config.get("process_name", "").lower():
+            continue
+        try:
+            inspection = inspect_browser(hwnd)
+            if inspection.get("url") == expected:
+                matched.append((hwnd, inspection))
+        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired):
+            continue
+    return matched
+
+
+def browser_limit_notice(config: dict) -> str | None:
+    """Read-only inspection; do not confuse conversation length and account quotas."""
+    targets = browsers_at_url(config)
+    if len(targets) != 1:
+        return None
+    return classify_visible_warnings(targets[0][1].get("visible_notices", []))
+
+
+def _save_migration_phase(handoff: dict, phase: str, **fields) -> dict:
+    current = migration_status()
+    if (current.get("migration_id"), current.get("phase")) != (
+        handoff.get("migration_id"), handoff.get("phase")
+    ):
+        raise RpaBlocked("Migration state changed unexpectedly")
+    updated = {**handoff, **fields, "phase": phase, "updated_at": now()}
+    atomic_save(MIGRATION, updated)
+    return updated
+
+
+def auto_open_new_chat(config: dict, state: dict, ram: float, idle: float) -> str:
+    """One-shot UI handoff. Fail closed on ambiguous navigation or submission.
+
+    There are no retries for uncertain browser clicks or partly typed drafts.
+    """
+    handoff = migration_status()
+    if handoff.get("phase") != "awaiting_new_chat" or handoff.get("trigger") not in (
+        "round_budget", "conversation_limit", "delivery_timeout"
+    ):
+        return "manual conversation migration"
+    if state.get("request_id") != handoff.get("request_id") or state.get("round") != handoff.get("round"):
+        return "migration checkpoint mismatch (manual review)"
+    if state.get("status") == "pending_send" or not PAUSE.exists() or LIMIT.exists():
+        return "migration safety block"
+    if ram < config["min_free_ram_gib"] or idle < config["min_user_idle_seconds"]:
+        return "migration awaiting RAM or user inactivity"
+    if not config.get("automatic_conversation_handoff", True):
+        return "automatic handoff disabled (manual migration available)"
+    verdict = pace_status(config, read_json(USAGE, new_ledger()))
+    if not verdict["allowed"]:
+        return "migration waiting for pacing: " + verdict["reason"]
+    targets = browsers_at_url(config)
+    if len(targets) != 1:
+        return "migration awaiting exact original browser window"
+    hwnd, before = targets[0]
+    old_url = handoff.get("previous_conversation_url", "")
+    if not old_url or before.get("url") != old_url or before.get("new_chat_count") != 1:
+        return "migration awaiting visible unique New chat button"
+    if U.GetForegroundWindow() != hwnd:
+        U.ShowWindow(hwnd, 9)
+        if not U.SetForegroundWindow(hwnd):
+            return "migration awaiting browser focus"
+        time.sleep(0.3)
+    if U.GetForegroundWindow() != hwnd or user_idle_seconds() < config["min_user_idle_seconds"]:
+        return "migration awaiting untouched browser focus"
+    # From this point any crash/click ambiguity is terminal until manual review.
+    handoff = _save_migration_phase(handoff, "opening_new_chat", window_handle=int(hwnd))
+    try:
+        opened = inspect_browser(hwnd, "open", old_url=old_url)
+        if not opened.get("invoked"):
+            raise RpaBlocked("New chat click not confirmed")
+        fresh = {}
+        for _ in range(8):
+            time.sleep(0.8)
+            fresh = inspect_browser(hwnd)
+            if (fresh.get("url") != old_url
+                    and fresh.get("composer_count") == 1
+                    and fresh.get("url", "").startswith("https://chatgpt.com")):
+                break
+        else:
+            raise RpaBlocked("New chat address/composer not verified after navigation")
+        handoff = _save_migration_phase(handoff, "new_chat_opened",
+                                         initial_new_url=fresh["url"])
+        bounds = composer_bounds(hwnd)
+        if bounds.get("text_length", 0) or bounds.get("generating"):
+            raise RpaBlocked("New composer is busy or contains a draft")
+        if U.GetForegroundWindow() != hwnd:
+            raise RpaBlocked("New chat lost focus")
+        prompt = recovery_prompt(handoff)
+        if ("[migration_id: " + handoff["migration_id"] + "]") not in prompt:
+            raise RpaBlocked("Recovery prompt missing migration marker")
+        # Conservatively account for the one new message before keyboard action.
+        ledger = record_attempt(config, read_json(USAGE, new_ledger()),
+                                "migration-" + handoff["migration_id"])
+        write_json(USAGE, ledger)
+        handoff = _save_migration_phase(handoff, "bootstrap_pending")
+        click_at(bounds["x"] + bounds["width"] // 2,
+                 bounds["y"] + bounds["height"] // 2)
+        send_text(prompt, expected_hwnd=hwnd)
+        submitted = inspect_browser(
+            hwnd, "send-handoff", old_url=old_url,
+            expected_new_url=handoff["initial_new_url"],
+            handoff_id=handoff["migration_id"],
+        )
+        if not submitted.get("invoked"):
+            raise RpaBlocked("Bootstrap Send invoke not confirmed")
+        _save_migration_phase(handoff, "bootstrap_sent", bootstrap_sent_at=now())
+        logging.warning("Novo chat criado e recuperacao enviada; aguardando migrate-ack do novo GPT")
+        return "migration bootstrap sent (awaiting verified recovery)"
+    except Exception:
+        logging.exception("Auto migration ambiguous; paused without retrying UI interaction")
+        return "migration needs manual inspection (no automatic retry)"
+
+
+def auto_finish_new_chat(config: dict, state: dict, idle: float) -> str:
+    """Only an ACK from the recovered GPT can release an automatic handoff."""
+    handoff = migration_status()
+    if handoff.get("phase") not in ("acknowledged", "attached"):
+        return "awaiting recovery acknowledgement"
+    if not PAUSE.exists() or LIMIT.exists() or state.get("status") != "ready":
+        return "migration finish blocked by checkpoint/limit/pause"
+    if (state.get("request_id"), state.get("round")) != (
+        handoff.get("request_id"), handoff.get("round")
+    ):
+        return "migration finish checkpoint mismatch"
+    if idle < config["min_user_idle_seconds"]:
+        return "migration finish awaiting user inactivity"
+    try:
+        if handoff["phase"] == "acknowledged":
+            hwnd = int(handoff.get("window_handle", 0))
+            if not hwnd or process_name(hwnd) != config.get("process_name"):
+                return "migration new browser window not found"
+            inspected = inspect_browser(hwnd)
+            # Acknowledge the same conversation in which the recovery marker
+            # was actually posted, not simply any new /c/ page in that window.
+            inspected_marker = browser_navigation(
+                ROOT / "scripts" / "expert_ai_chat_nav.ps1", hwnd,
+                action="inspect", handoff_id=handoff["migration_id"],
+            )
+            if not inspected_marker.get("handoff_marker_present"):
+                return "migration marker not visible in new conversation"
+            url = inspected.get("url", "")
+            if (not re.fullmatch(r"https://(?:www\.)?chatgpt\.com/c/[0-9a-f-]+", url)
+                    or url == handoff.get("previous_conversation_url")
+                    or inspected.get("composer_count") != 1):
+                return "migration new conversation URL not verified"
+            U.ShowWindow(hwnd, 9)
+            if not U.SetForegroundWindow(hwnd):
+                return "migration waiting for new chat focus"
+            time.sleep(0.3)
+            if U.GetForegroundWindow() != hwnd:
+                return "migration new chat not foreground"
+            calibrate_auto(migration_title=handoff["previous_window_title"],
+                           migration_url=handoff["previous_conversation_url"])
+            attach_migration(win_title(hwnd))
+        from expert_ai_migration import finish_migration
+        result = finish_migration()
+        logging.warning("Migracao automatica concluida: %s", result)
+        return "automatic migration finished"
+    except Exception:
+        logging.exception("Migration ACK received but attach/finish needs inspection")
+        return "migration attachment needs manual review"
 
 
 def run(once: bool = False, dry_run: bool = False) -> None:
@@ -728,6 +946,66 @@ def run(once: bool = False, dry_run: bool = False) -> None:
             pending = pending_tasks(config.get("task_prefix", "APP"))
             ram, idle = free_ram_gib(), user_idle_seconds()
             action = decision(state, config, pending, ram, idle, PAUSE.exists())
+            session = read_session()
+            handoff = handoff_policy(
+                state, config, session, pending_count=len(pending),
+                paused=PAUSE.exists(), migration_pending=MIGRATION.exists(),
+                limit_hold=LIMIT.exists(),
+            )
+            if (not dry_run and not once and not MIGRATION.exists()
+                    and not PAUSE.exists() and not LIMIT.exists()
+                    and state.get("status") in ("ready", "requested", "running")
+                    and config.get("automatic_conversation_handoff", True)):
+                try:
+                    visible_warning = browser_limit_notice(config)
+                except Exception as exc:
+                    logging.debug("Chat warning inspection unavailable: %s", exc)
+                    visible_warning = None
+                if visible_warning == "account_limit":
+                    LIMIT.touch()
+                    PAUSE.touch()
+                    action = "platform usage limit detected (no new chat)"
+                    logging.warning("Aviso de limite de USO detectado; pausa sem criar chat")
+                elif visible_warning in ("conversation_length", "delivery_timeout"):
+                    try:
+                        if visible_warning == "delivery_timeout":
+                            # An old delivery may have succeeded despite the toast.
+                            # Never create a fresh development request on the old chat.
+                            if state.get("status") == "pending_send":
+                                PAUSE.touch()
+                                logging.warning("Timeout with pending draft: manual review needed")
+                                return
+                            prepare_migration(trigger="delivery_timeout")
+                            logging.warning("Message delivery timeout: recovery in new chat, no old resend")
+                        else:
+                            prepare_migration(trigger="conversation_limit")
+                            logging.warning("Conversation length warning: preparing a new chat")
+                        action = "conversation migration pending"
+                    except Exception:
+                        PAUSE.touch()
+                        logging.exception("Conversation warning but migration unsafe; paused")
+                        return
+            if handoff["should_prepare"] and not MIGRATION.exists() and not LIMIT.exists():
+                if dry_run:
+                    action = "conversation handoff due (dry-run, no changes)"
+                else:
+                    try:
+                        # Preparation pauses FIRST and checks the current checkpoint.
+                        # No new request_id is allocated. Browser attachment is guarded.
+                        handoff_data = prepare_migration(
+                            trigger="round_budget", budget_rounds=handoff["rounds"]
+                        )
+                        action = "conversation migration pending"
+                        logging.warning(
+                            "Chat longo (%s rodadas): migra??o preventiva preparada "
+                            "na rodada %s, ID %s. Abra a aba Conversa do HUD.",
+                            handoff["rounds"], handoff_data["round"],
+                            handoff_data["request_id"],
+                        )
+                    except Exception:
+                        PAUSE.touch()
+                        logging.exception("Falha no preparo preventivo; envios pausados")
+                        return
             try:
                 mode = pace_status(config, read_json(USAGE, new_ledger()))
             except (ValueError, TypeError, KeyError) as exc:
@@ -735,11 +1013,23 @@ def run(once: bool = False, dry_run: bool = False) -> None:
                         "next_eligible_at": None}
             if not mode["allowed"] and action == "send":
                 action = "pacing: " + mode["reason"]
+            active_migration = migration_status()
+            if (active_migration.get("trigger") in ("round_budget", "conversation_limit", "delivery_timeout")
+                    and not dry_run and not once):
+                phase = active_migration.get("phase")
+                if phase == "awaiting_new_chat":
+                    action = auto_open_new_chat(config, state, ram, idle)
+                elif phase in ("acknowledged", "attached"):
+                    action = auto_finish_new_chat(config, state, idle)
+                elif phase == "bootstrap_sent":
+                    action = "new chat recovery in progress (waiting for GPT migrate-ack)"
+                else:
+                    action = "migration needs manual inspection: " + str(phase)
             if action != last_action or once or dry_run:
                 logging.info("state=%s pending=%d RAM=%.2fGiB idle=%.0fs decision=%s",
                              state.get("status"), len(pending), ram, idle, action)
             last_action = action
-            budget = context_budget(state.get("round", 0), read_session())
+            budget = context_budget(state.get("round", 0), session)
             notice = (budget["level"], budget["rounds"])
             if (budget["level"] in ("suggest", "recommend") and notice != last_context_notice
                     and state.get("status") == "ready"):
@@ -789,7 +1079,9 @@ def run(once: bool = False, dry_run: bool = False) -> None:
             # Running/requested: draw a fresh 10–20 minute fallback interval;
             # GPT state/config changes still wake us immediately (within ~5s).
             next_check_seconds = (10 if action in ("send", "retry pending send") or
-                                  action.startswith(("user active", "low RAM", "calibration", "pacing:"))
+                                  action.startswith(("user active", "low RAM", "calibration",
+                                                     "pacing:", "migration", "new chat",
+                                                     "automatic migration", "awaiting recovery"))
                                   else periodic_check_delay_seconds(config))
             if next_check_seconds >= 600:
                 logging.info("Next periodic health check in %.1f minutes (randomized)",
@@ -811,6 +1103,8 @@ def run(once: bool = False, dry_run: bool = False) -> None:
                 "safe_mode_enabled": config["safe_mode_enabled"],
                 "breaks_enabled": config["breaks_enabled"],
                 "conversation_budget": budget,
+                "conversation_handoff": handoff,
+                "migration_phase": migration_status().get("phase"),
             }
             write_monitor(monitor)
             wake_reason = wait_for_change(state, config, next_check_seconds, monitor=monitor)

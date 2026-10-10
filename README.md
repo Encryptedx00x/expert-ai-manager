@@ -23,8 +23,9 @@ O projeto Óliver's Burger foi apenas o piloto. O script pode ser instalado em q
 - **Pausas de descanso** opcionais: curtas e ocasionais longas, com duração dentro de intervalos configuráveis.
 - Inspeções periódicas entre 10 e 20 minutos, sem atrasar arbitrariamente um checkpoint pronto (os limites de uso continuam valendo).
 - **HUD Tkinter** leve, sem servidor web: estados e progresso em linguagem clara, contador visual de inatividade até 90 segundos (reinicia com mouse/teclado), pausas, tarefas, commit e testes. As checagens técnicas de 10 segundos ficam ocultas no painel.
-- **Troca assistida de conversa (v1)**: quando o chat ficar extenso demais, abra a aba **Conversa**, pause novos envios, copie o prompt de recuperação, abra um chat novo e valide a vinculação antes de retomar. Sem perda do checkpoint ou envio duplicado. Consulte [Troca de conversa](docs/TROCA_DE_CONVERSA.md).
-- **Contexto mais eficiente**: o próximo prompt pede lotes de 2–4 tarefas relacionadas, leituras direcionadas e saídas curtas; exige os mesmos testes, revisões, commits e segurança. O supervisor registra a quantidade de rodadas desde a última migração verificada e avisa nos logs e em `expert_ai_rpa.py status` após 5 e 8 rodadas. **São estimativas, não leitura de tokens reais.** Sem bloqueios automáticos por essa contagem.
+- **Troca automatica entre conversas:** o EAM pode detectar comprimento excessivo, o aviso de timeout de entrega ou um limite preventivo de 8 rodadas. Ele pausa novos pedidos, abre New chat pela acessibilidade do Brave/Edge, envia um prompt de recuperacao e so retoma depois de uma confirmacao local do novo GPT. Nao reenvia a mesma mensagem em caso de ambiguidade e nao contorna quotas do plano.
+- **Migra??o manual mantida:** o HUD permite preparar, copiar e anexar chats manualmente, sem apagar o request_id.
+- **Contexto mais eficiente:** lotes de 2 a 4 tarefas relacionadas, resumos de comandos e logs curtos, mantendo testes, seguran?a, revis?es e commits.
 - Reutilizável em qualquer projeto que tenha um diretório de trabalho e uma conversa própria.
 
 ## Instalação rápida (Windows)
@@ -58,6 +59,7 @@ py -3 -B -u scripts\expert_ai_rpa.py run
 - [Prompt mestre](docs/PROMPT_PLANEJAMENTO.md): planejamento aprofundado.
 - [Guia completo](docs/GUIA_COMPLETO.md): configurações e solução de problemas.
 - [Troca de conversa](docs/TROCA_DE_CONVERSA.md): passo a passo para migrar quando o chat atingir seu limite.
+- [Fallback MCP gratuito](docs/FALLBACK_MCP_GRATUITO.md): acesso local com Gemini CLI/servidor MCP quando a franquia do relay remoto acabar.
 - [Templates](templates): AGENTS, TASKS, STATE e ARCHITECTURE para novos projetos.
 
 ## Controles
